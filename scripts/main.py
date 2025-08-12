@@ -1,38 +1,48 @@
-import sys
+import torch
+import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
+from PIL import Image
 import os
+import glob
 import numpy as np
-import pickle
+from tqdm import tqdm
+import torch.nn.functional as F
+from torchvision import models
+from typing import List, Dict
+import math
+import sys
 
 np.random.seed(42)
 import train
 import evaluate
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from models import model
+import models
 from data import data_loader
-from utils import visualization
+from utils import visualization, metrics
 
-X_train, X_test, y_train, y_test = data_loader.get_data()
-history, model = train.train([
-        model.Linear(21, 16),
-        model.ReLU(),
-        model.Linear(16, 1)],
-        X_train, y_train,
-        epochs=1000,
-        batch_size=32,
-        learning_rate=0.1,
-        loss=model.MSE()
+DATA_DIR = 'chest_xray/chest_xray'
+INPUT_SIZE = 256
+BATCH_SIZE = 200
+LEARNING_RATE = 1e-4
+EPOCHS = 200
+ALPHA_LOSS = 0.7
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+
+train_loader, test_normal_loader, test_abnormal_loader = data_loader.get_dataloader(INPUT_SIZE, BATCH_SIZE)
+
+best_model = train.train(
+        train_loader, test_normal_loader, test_abnormal_loader,
+        EPOCHS, device, ALPHA_LOSS, LEARNING_RATE, INPUT_SIZE
 )
 
-with open('../models/saved_models/mlp_model.pkl', 'wb') as f:
-    pickle.dump(model, f)
-
-print("Model Saved!")
-
-visualization.visualize(history)
-
-y_pred = evaluate.predict(X_test, y_test, model)
-y_pred = data_loader.reverse_normalization(y_pred, data_loader.mx_l, data_loader.mn_l)
-y_test = data_loader.reverse_normalization(y_test, data_loader.mx_l, data_loader.mn_l)
-
-visualization.scatter(y_test, y_pred)
+metrics.evaluate_anomaly_detector(
+        model=best_model,
+        normal_loader=test_normal_loader,
+        abnormal_loader=test_abnormal_loader,
+        device=device,
+        input_size=INPUT_SIZE
+)
 
