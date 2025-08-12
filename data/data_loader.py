@@ -1,70 +1,76 @@
+import torch
+import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
+from PIL import Image
 import os
-import pandas as pd
+import glob
 import numpy as np
-from sklearn.model_selection import train_test_split
-import os
-import sys
-from sklearn.preprocessing import LabelEncoder
-
-mx_l, mn_l = 0, 0
-
-
-def fill_with_random(new_df):
-    """Function to fill the missing values using random imputation method."""
-    for col in new_df.columns:
-        if new_df[col].isna().sum() > 0:
-            new_df[col] = new_df[col].apply(lambda x: np.random.choice(new_df[col].dropna().values) if pd.isna(x) else x)
-
-    return new_df
+from tqdm import tqdm
+import torch.nn.functional as F
+from torchvision import models
+from typing import List, Dict
+import math
 
 
-def min_max_normalize(x_i: np.ndarray) -> np.ndarray:
-    """Function to normalize the input using min-max method."""
-    mx_val, mn_val = np.max(x_i), np.min(x_i)
+class ChestXRayDataset(Dataset):
+    def __init__(self, root_dir: str, transform=None):
+        # self.image_paths = glob.glob(os.path.join(root_dir, '*.jpeg'))
+        self.image_paths = []
+        for ext in ('*.jpeg','*.jpg','*.png'):
+            self.image_paths += glob.glob(os.path.join(root_dir, ext))
+        self.image_paths = sorted(self.image_paths)
+        self.transform = transform
+        if not self.image_paths:
+            raise RuntimeError(f"No .jpeg images found in {root_dir}")
 
-    return (x_i - mn_val) / (mx_val - mn_val)
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, idx):
+        img_path = self.image_paths[idx]
+        image = Image.open(img_path).convert('RGB')
+        if self.transform:
+            image = self.transform(image)
+        return image
 
 
-def reverse_normalization(x_i: np.ndarray, mx_x: float, mn_x: float) -> np.ndarray:
-    """Function to reverse the normalization."""
-    x_i *= (mx_x - mn_x)
-    return x_i + mn_x
+def get_dataloader(input_size=256, batch_size=16):
+    DATA_DIR = "dataset/'chest_xray/chest_xray"
+    imagenet_mean = [0.485, 0.456, 0.406]
+    imagenet_std = [0.229, 0.224, 0.225]
 
+    train_transform = transforms.Compose([
+        transforms.Resize((input_size, input_size)),
+        transforms.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1)),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=imagenet_mean, std=imagenet_std)
+    ])
 
-def get_data() -> tuple:
-    """Function to load and return the dataset in a proper form to use later."""
-    global mx_l, mn_l
-    dataset_path = os.path.join(os.path.dirname(__file__), 'dataset')
-    df = pd.read_csv(os.path.join(dataset_path, 'Life Expectancy Data.csv'))
-    print(f"The dataframe has the following missing values: {df.isnull().sum()}")
-    df = fill_with_random(df)
-    print(f"The missing values have been filled using random replacement: {df.isnull().sum()}")
+    test_transform = transforms.Compose([
+        transforms.Resize((input_size, input_size)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=imagenet_mean, std=imagenet_std)
+    ])
 
-    le = LabelEncoder()
-    df['Country'] = le.fit_transform(df['Country'])
-    print(f"The Country column has become numerical using LabelEncoder!")
+    # --- Datasets and DataLoaders ---
+    train_normal_dir = os.path.join(DATA_DIR, 'train', 'NORMAL')
+    train_dataset = ChestXRayDataset(root_dir=train_normal_dir, transform=train_transform)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
 
-    df = pd.get_dummies(df, columns=['Status'], drop_first=True)
-    print(f"The Status column has become numerical using One-hot encoding!")
+    test_normal_dir = os.path.join(DATA_DIR, 'test', 'NORMAL')
+    test_abnormal_dir = os.path.join(DATA_DIR, 'test', 'PNEUMONIA')
 
-    mx, mn = df['Year'].max(), df['Year'].min()
-    mx_l, mn_l = df['Life expectancy '].max(), df['Life expectancy '].min()
+    test_normal_dataset = ChestXRayDataset(root_dir=test_normal_dir, transform=test_transform)
+    test_abnormal_dataset = ChestXRayDataset(root_dir=test_abnormal_dir, transform=test_transform)
 
-    split_point = (2010 - mn) / (mx - mn)
+    test_normal_loader = DataLoader(test_normal_dataset, batch_size=batch_size, shuffle=False)
+    test_abnormal_loader = DataLoader(test_abnormal_dataset, batch_size=batch_size, shuffle=False)
 
-    df = df.apply(min_max_normalize, axis=0)
-    print("Normalization is done!")
+    print(f"Found {len(train_dataset)} normal images for training.")
+    print(f"Found {len(test_normal_dataset)} normal images for testing.")
+    print(f"Found {len(test_abnormal_dataset)} abnormal images for testing.")
 
-    df_train = df[df['Year'] <= split_point]
-    df_test = df[df['Year'] > split_point]
+    return train_loader, test_normal_loader, test_abnormal_loader
 
-    y_train, y_test = df_train['Life expectancy '].to_numpy(), df_test['Life expectancy '].to_numpy()
-    y_train = y_train.reshape(-1, 1)
-    y_test = y_test.reshape(-1, 1)
-    # y_train = reverse_normalization(y_train, mx_l, mn_l)
-    # y_test = reverse_normalization(y_test, mx_l, mn_l)
-
-    X_train, X_test = df_train.drop(columns=['Life expectancy ']).to_numpy(), df_test.drop(columns=['Life expectancy ']).to_numpy()
-    print("Splitting the dataset into train and test set is finished!")
-
-    return X_train, X_test, y_train, y_test
