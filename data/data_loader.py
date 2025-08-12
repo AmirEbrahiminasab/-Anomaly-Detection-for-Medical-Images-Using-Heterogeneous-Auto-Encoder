@@ -36,7 +36,7 @@ class ChestXRayDataset(Dataset):
 
 
 def get_dataloader(input_size=256, batch_size=16):
-    DATA_DIR = "dataset/'chest_xray/chest_xray"
+    DATA_DIR = "../data/dataset/chest_xray/chest_xray"
     imagenet_mean = [0.485, 0.456, 0.406]
     imagenet_std = [0.229, 0.224, 0.225]
 
