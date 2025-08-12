@@ -41,7 +41,7 @@ class FeatureComparisonLoss(nn.Module):
             stage_losses.append(Lk_per_sample)
 
         # Sum stages and average -> per-sample loss
-        total_per_sample = sum(stage_losses) / len(stage_losses)  # (B,)
+        total_per_sample = sum(stage_losses)
 
         # Finally average over batch -> scalar
         return total_per_sample.mean()
