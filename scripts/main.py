@@ -5,41 +5,76 @@ import sys
 
 np.random.seed(42)
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import train
+from scripts.train import train
 import models
-from data import data_loader
-from utils import visualization, metrics
+from data.data_loader import get_dataloaders_brain_tumor, get_dataloader_chest_xray
+from utils.metrics import calculate_specificity, evaluate_anomaly_detector
 
-DATA_DIR = 'chest_xray/chest_xray'
 INPUT_SIZE = 256
 BATCH_SIZE = 200
 LEARNING_RATE = 1e-4
 EPOCHS = 200
 ALPHA_LOSS = 0.7
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {device}")
-print(torch.__version__)
 
-train_loader, test_normal_loader, test_abnormal_loader = data_loader.get_dataloader(INPUT_SIZE, BATCH_SIZE)
+def chest_xray():
+	DATA_DIR = 'chest_xray/chest_xray'
 
-best_model = train.train(
-        train_loader, test_normal_loader, test_abnormal_loader,
-        EPOCHS, device, ALPHA_LOSS, LEARNING_RATE, INPUT_SIZE
-)
+	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+	print(f"Using device: {device}")
+	print(torch.__version__)
+
+	train_loader, test_normal_loader, test_abnormal_loader = get_dataloader_chest_xray(INPUT_SIZE, BATCH_SIZE)
+
+	best_model = train(
+			train_loader, test_normal_loader, test_abnormal_loader,
+			EPOCHS, device, ALPHA_LOSS, LEARNING_RATE, INPUT_SIZE
+	)
 
 
-SAVE_DIR = 'models/saved_models'
-SAVE_PATH = os.path.join(SAVE_DIR, 'best_model_weights.pth')
-os.makedirs(SAVE_DIR, exist_ok=True)
-torch.save(best_model.state_dict(), SAVE_PATH)
-print(f"✅ Best model's weights saved to: {SAVE_PATH}")
+	SAVE_DIR = 'models/saved_models'
+	SAVE_PATH = os.path.join(SAVE_DIR, 'best_model_weights.pth')
+	os.makedirs(SAVE_DIR, exist_ok=True)
+	torch.save(best_model.state_dict(), SAVE_PATH)
+	print(f"✅ Best model's weights saved to: {SAVE_PATH}")
 
-metrics.evaluate_anomaly_detector(
-        model=best_model,
-        normal_loader=test_normal_loader,
-        abnormal_loader=test_abnormal_loader,
-        device=device,
-        input_size=INPUT_SIZE
-)
+	evaluate_anomaly_detector(
+			model=best_model,
+			normal_loader=test_normal_loader,
+			abnormal_loader=test_abnormal_loader,
+			device=device,
+			input_size=INPUT_SIZE
+	)
 
+def brain_tumor():
+	DATA_DIR = "D:\Deep\Project\data"
+
+	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+	print(f"Using device: {device}")
+	print(torch.__version__)
+
+	train_loader, test_normal_loader, test_abnormal_loader = get_dataloaders_brain_tumor(INPUT_SIZE, BATCH_SIZE)
+
+	best_model = train(
+			train_loader, test_normal_loader, test_abnormal_loader,
+			EPOCHS, device, ALPHA_LOSS, LEARNING_RATE, INPUT_SIZE
+	)
+
+
+	SAVE_DIR = 'models/saved_models'
+	SAVE_PATH = os.path.join(SAVE_DIR, 'best_model_weights.pth')
+	os.makedirs(SAVE_DIR, exist_ok=True)
+	torch.save(best_model.state_dict(), SAVE_PATH)
+	print(f"✅ Best model's weights saved to: {SAVE_PATH}")
+
+	evaluate_anomaly_detector(
+			model=best_model,
+			normal_loader=test_normal_loader,
+			abnormal_loader=test_abnormal_loader,
+			device=device,
+			input_size=INPUT_SIZE
+	)
+
+if __name__=="__main__":
+
+	brain_tumor()
