@@ -7,7 +7,7 @@ np.random.seed(42)
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from scripts.train import train
 import models
-from data.data_loader import get_dataloaders_brain_tumor, get_dataloader_chest_xray
+from data.data_loader import get_dataloader_brain_tumor, get_dataloader_chest_xray
 from utils.metrics import calculate_specificity, evaluate_anomaly_detector
 
 INPUT_SIZE = 256
@@ -47,13 +47,17 @@ def chest_xray():
 	)
 
 def brain_tumor():
-	DATA_DIR = "D:\Deep\Project\data"
+	DATA_DIR = "/home/appliedailab/Desktop/Deep/brain_tumor"
 
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 	print(f"Using device: {device}")
 	print(torch.__version__)
 
-	train_loader, test_normal_loader, test_abnormal_loader = get_dataloaders_brain_tumor(INPUT_SIZE, BATCH_SIZE)
+	train_loader, test_normal_loader, test_abnormal_loader = get_dataloader_brain_tumor(
+		dataset_root=DATA_DIR,
+		input_size=INPUT_SIZE, 
+		batch_size=BATCH_SIZE
+		)
 
 	best_model = train(
 			train_loader, test_normal_loader, test_abnormal_loader,
