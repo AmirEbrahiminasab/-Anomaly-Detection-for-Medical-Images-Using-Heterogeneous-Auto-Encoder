@@ -7,7 +7,7 @@ np.random.seed(42)
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from scripts.train import train
 import models
-from data.data_loader import get_dataloader_brain_tumor, get_dataloader_chest_xray
+from data.data_loader import get_dataloader_brain_tumor, get_dataloader_chest_xray, get_dataloader_covid19
 from utils.metrics import calculate_specificity, evaluate_anomaly_detector
 
 INPUT_SIZE = 256
@@ -79,6 +79,41 @@ def brain_tumor():
 			input_size=INPUT_SIZE
 	)
 
-if __name__=="__main__":
+def covid19():
+    # Point this to your folder with Train/Normal, Train/Covid, Val/Normal, Val/Covid
+    DATA_DIR = os.path.join("..", "CovidDataset")
 
-	brain_tumor()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+    print(torch.__version__)
+
+    train_loader, test_normal_loader, test_abnormal_loader = get_dataloader_covid19(
+        dataset_root=DATA_DIR,
+        input_size=INPUT_SIZE,
+        batch_size=BATCH_SIZE,
+    )
+
+    best_model = train(
+        train_loader, test_normal_loader, test_abnormal_loader,
+        EPOCHS, device, ALPHA_LOSS, LEARNING_RATE, INPUT_SIZE
+    )
+
+    SAVE_DIR = 'models/saved_models'
+    os.makedirs(SAVE_DIR, exist_ok=True)
+    SAVE_PATH = os.path.join(SAVE_DIR, 'best_model_weights_covid19.pth')
+    torch.save(best_model.state_dict(), SAVE_PATH)
+    print(f"Best model's weights saved to: {SAVE_PATH}")
+
+    evaluate_anomaly_detector(
+        model=best_model,
+        normal_loader=test_normal_loader,
+        abnormal_loader=test_abnormal_loader,
+        device=device,
+        input_size=INPUT_SIZE
+    )
+    
+if __name__=="__main__":
+	# chest_xray()
+	# brain_tumor()
+	covid19()
+ 
