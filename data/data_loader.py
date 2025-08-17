@@ -204,3 +204,109 @@ def get_dataloader_brain_tumor(dataset_root='', input_size=256, batch_size=16):
     print("-" * 30)
     
     return train_loader, test_normal_loader, test_abnormal_loader
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# COVID dataset
+# Train on:  <root>/Train/Normal
+# Test on:   <root>/Val/Normal  vs  <root>/Val/Covid
+# ──────────────────────────────────────────────────────────────────────────────
+import os, glob
+from typing import List
+from PIL import Image
+import numpy as np
+import torch
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
+
+class Covid19_Dataset(Dataset):
+    """Image-only dataset over a directory of images (jpg/png/jpeg)."""
+    def __init__(self, root_dir: str, transform=None):
+        self.image_paths: List[str] = []
+        for ext in ('*.jpeg', '*.jpg', '*.png'):
+            self.image_paths += glob.glob(os.path.join(root_dir, ext))
+        self.image_paths = sorted(self.image_paths)
+        self.transform = transform
+        if not self.image_paths:
+            raise RuntimeError(f"No images found in {root_dir}")
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, idx: int):
+        p = self.image_paths[idx]
+        img = Image.open(p).convert("RGB")
+        if self.transform:
+            img = self.transform(img)
+        return img
+
+def _find_subdir_ci(base: str, name: str) -> str:
+    """Find a subdir under base, case-insensitive (returns first match)."""
+    candidates = [d for d in os.listdir(base) if os.path.isdir(os.path.join(base, d))]
+    for d in candidates:
+        if d.lower() == name.lower():
+            return os.path.join(base, d)
+    # also allow partial (e.g., 'train' matches 'Training' if needed)
+    for d in candidates:
+        if name.lower() in d.lower():
+            return os.path.join(base, d)
+    raise FileNotFoundError(f"Expected subdir '{name}' under {base}")
+
+def get_dataloader_covid19(
+    dataset_root: str,
+    input_size: int = 256,
+    batch_size: int = 16,
+    num_workers: int = 2,
+):
+    """
+    Returns:
+        train_loader, test_normal_loader, test_abnormal_loader
+    Layout (case-insensitive):
+        <root>/Train/Normal, <root>/Train/Covid
+        <root>/Val/Normal,   <root>/Val/Covid
+    Training uses only Normal from Train; testing uses Val/Normal vs Val/Covid.
+    """
+    # Folders (case-insensitive resolution)
+    train_dir = _find_subdir_ci(dataset_root, "Train")
+    val_dir   = _find_subdir_ci(dataset_root, "Val")
+
+    train_normal_dir = _find_subdir_ci(train_dir, "Normal")
+    val_normal_dir   = _find_subdir_ci(val_dir, "Normal")
+    val_covid_dir    = _find_subdir_ci(val_dir, "Covid")
+
+    # Transforms (match your other loaders)
+    imagenet_mean = [0.485, 0.456, 0.406]
+    imagenet_std  = [0.229, 0.224, 0.225]
+
+    train_tfm = transforms.Compose([
+        transforms.Resize((input_size, input_size)),
+        transforms.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1)),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
+    ])
+    test_tfm = transforms.Compose([
+        transforms.Resize((input_size, input_size)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
+    ])
+
+    # Datasets & Loaders (train on Normal; test on Normal vs Covid)
+    train_dataset        = Covid19_Dataset(train_normal_dir, transform=train_tfm)
+    test_normal_dataset  = Covid19_Dataset(val_normal_dir,   transform=test_tfm)
+    test_abnormal_dataset= Covid19_Dataset(val_covid_dir,    transform=test_tfm)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+                              num_workers=num_workers, pin_memory=True)
+    test_normal_loader = DataLoader(test_normal_dataset, batch_size=batch_size, shuffle=False,
+                                    num_workers=num_workers, pin_memory=True)
+    test_abnormal_loader = DataLoader(test_abnormal_dataset, batch_size=batch_size, shuffle=False,
+                                      num_workers=num_workers, pin_memory=True)
+
+    print("-" * 30)
+    print(f"[COVID] Train (Normal): {len(train_dataset)}")
+    print(f"[COVID] Test  (Normal): {len(test_normal_dataset)}")
+    print(f"[COVID] Test  (Covid):  {len(test_abnormal_dataset)}")
+    print("-" * 30)
+
+    return train_loader, test_normal_loader, test_abnormal_loader
