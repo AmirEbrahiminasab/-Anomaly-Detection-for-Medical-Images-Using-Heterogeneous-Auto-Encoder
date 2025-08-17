@@ -53,6 +53,10 @@ def trunc_normal_(tensor, mean=0., std=1., a=-2., b=2.):
 class MSTB(nn.Module):
     def __init__(self, in_channels: int, num_heads: int, h: int, w: int, p1_size: int, p2_size: int):
         super(MSTB, self).__init__()
+        assert num_heads % 2 == 0, "num_heads must be even because we split heads across p1/p2"
+        assert h % p1_size == 0 and w % p1_size == 0, "H,W must be divisible by p1_size"
+        assert h % p2_size == 0 and w % p2_size == 0, "H,W must be divisible by p2_size"
+
         self.num_heads = num_heads
         self.head_dim = in_channels // num_heads
         self.scale = self.head_dim ** -0.5
@@ -81,10 +85,13 @@ class MSTB(nn.Module):
         self.mlp = nn.Sequential(
             nn.Linear(in_channels, 4 * in_channels),
             nn.GELU(),
+            nn.Dropout(0.1),
             nn.Linear(4 * in_channels, in_channels)
+            nn.Dropout(0.1),
         )
         self.norm_q = nn.LayerNorm(in_channels)   # normalize queries as in pre-norm design
         self.norm2 = nn.LayerNorm(in_channels)    # LN applied to Z before MLP
+        self.norm_out = nn.LayerNorm(in_channels)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, C, H, W = x.shape
@@ -126,6 +133,7 @@ class MSTB(nn.Module):
         Z = torch.cat([out1, out2], dim=-1)
 
         # project and then follow paper: Z -> LN -> MLP (with residual)
+        Z = self.norm_out(Z)          # normalize concatenated [out1,out2]
         Z = self.to_out(Z)           # final linear projection
         Z = Z + q_local              # residual with local information (keeps local detail)
         Z = Z + self.mlp(self.norm2(Z))
@@ -141,8 +149,10 @@ class HybridModule(nn.Module):
         self.conv1_2 = nn.Conv2d(in_channels, in_channels // 2, kernel_size=1)
         self.conv_block = nn.Sequential(
             nn.Conv2d(in_channels // 2, in_channels // 2, kernel_size=3, padding=1),
+            nn.BatchNorm2d(in_channels // 2),
             nn.ReLU(inplace=True),
             nn.Conv2d(in_channels // 2, in_channels // 2, kernel_size=3, padding=1)
+            nn.BatchNorm2d(in_channels // 2),
         )
         self.transformer_block = MSTB(
             in_channels=in_channels // 2, num_heads=num_heads,
