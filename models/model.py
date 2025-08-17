@@ -86,7 +86,7 @@ class MSTB(nn.Module):
             nn.Linear(in_channels, 4 * in_channels),
             nn.GELU(),
             nn.Dropout(0.1),
-            nn.Linear(4 * in_channels, in_channels)
+            nn.Linear(4 * in_channels, in_channels),
             nn.Dropout(0.1),
         )
         self.norm_q = nn.LayerNorm(in_channels)   # normalize queries as in pre-norm design
@@ -151,7 +151,7 @@ class HybridModule(nn.Module):
             nn.Conv2d(in_channels // 2, in_channels // 2, kernel_size=3, padding=1),
             nn.BatchNorm2d(in_channels // 2),
             nn.ReLU(inplace=True),
-            nn.Conv2d(in_channels // 2, in_channels // 2, kernel_size=3, padding=1)
+            nn.Conv2d(in_channels // 2, in_channels // 2, kernel_size=3, padding=1),
             nn.BatchNorm2d(in_channels // 2),
         )
         self.transformer_block = MSTB(
