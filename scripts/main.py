@@ -81,7 +81,8 @@ def brain_tumor():
 
 def covid19():
     # Point this to your folder with Train/Normal, Train/Covid, Val/Normal, Val/Covid
-    DATA_DIR = os.path.join("..", "CovidDataset")
+    # DATA_DIR = os.path.join("..", "CovidDataset")
+    DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "CovidDataset"))
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")

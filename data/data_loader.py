@@ -240,6 +240,23 @@ class Covid19_Dataset(Dataset):
             img = self.transform(img)
         return img
 
+def _ensure_dir(p: str):
+    os.makedirs(p, exist_ok=True)
+    return p
+
+def _ensure_covid_structure(dataset_root: str):
+    """
+    Ensure <root>/Train/Normal, <root>/Val/Normal, <root>/Val/Covid exist.
+    Returns their absolute paths.
+    """
+    train_dir = _ensure_dir(os.path.join(dataset_root, "Train"))
+    val_dir   = _ensure_dir(os.path.join(dataset_root, "Val"))
+
+    train_normal_dir = _ensure_dir(os.path.join(train_dir, "Normal"))
+    val_normal_dir   = _ensure_dir(os.path.join(val_dir, "Normal"))
+    val_covid_dir    = _ensure_dir(os.path.join(val_dir, "Covid"))
+    return train_normal_dir, val_normal_dir, val_covid_dir
+
 def _find_subdir_ci(base: str, name: str) -> str:
     """Find a subdir under base, case-insensitive (returns first match)."""
     candidates = [d for d in os.listdir(base) if os.path.isdir(os.path.join(base, d))]
@@ -267,12 +284,29 @@ def get_dataloader_covid19(
     Training uses only Normal from Train; testing uses Val/Normal vs Val/Covid.
     """
     # Folders (case-insensitive resolution)
-    train_dir = _find_subdir_ci(dataset_root, "Train")
-    val_dir   = _find_subdir_ci(dataset_root, "Val")
+    # train_dir = _find_subdir_ci(dataset_root, "Train")
+    # val_dir   = _find_subdir_ci(dataset_root, "Val")
 
-    train_normal_dir = _find_subdir_ci(train_dir, "Normal")
-    val_normal_dir   = _find_subdir_ci(val_dir, "Normal")
-    val_covid_dir    = _find_subdir_ci(val_dir, "Covid")
+    # train_normal_dir = _find_subdir_ci(train_dir, "Normal")
+    # val_normal_dir   = _find_subdir_ci(val_dir, "Normal")
+    # val_covid_dir    = _find_subdir_ci(val_dir, "Covid")
+    
+    # 1) Make sure the expected folders exist (create them if not)
+    train_normal_dir, val_normal_dir, val_covid_dir = _ensure_covid_structure(dataset_root)
+
+    # 2) If they’re empty, give a clear, non-crashing message
+    def _has_images(d: str):
+        return any(glob.glob(os.path.join(d, p)) for p in ("*.png", "*.jpg", "*.jpeg", "*.bmp"))
+
+    if not (_has_images(train_normal_dir) and _has_images(val_normal_dir) and _has_images(val_covid_dir)):
+        raise RuntimeError(
+            "CovidDataset is prepared but empty.\n"
+            f"Please download/copy images into:\n"
+            f"  - {train_normal_dir}  (Normal train images)\n"
+            f"  - {val_normal_dir}    (Normal val images)\n"
+            f"  - {val_covid_dir}     (Covid val images)\n"
+            "Then re-run."
+        )
 
     # Transforms (match your other loaders)
     imagenet_mean = [0.485, 0.456, 0.406]
