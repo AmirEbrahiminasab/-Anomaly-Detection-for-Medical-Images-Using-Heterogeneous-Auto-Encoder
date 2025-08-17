@@ -218,6 +218,11 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
+import shutil
+import tarfile
+import tempfile
+import zipfile
+from urllib.request import urlopen, Request
 
 class Covid19_Dataset(Dataset):
     """Image-only dataset over a directory of images (jpg/png/jpeg)."""
@@ -257,23 +262,94 @@ def _ensure_covid_structure(dataset_root: str):
     val_covid_dir    = _ensure_dir(os.path.join(val_dir, "Covid"))
     return train_normal_dir, val_normal_dir, val_covid_dir
 
-def _find_subdir_ci(base: str, name: str) -> str:
-    """Find a subdir under base, case-insensitive (returns first match)."""
-    candidates = [d for d in os.listdir(base) if os.path.isdir(os.path.join(base, d))]
-    for d in candidates:
-        if d.lower() == name.lower():
-            return os.path.join(base, d)
-    # also allow partial (e.g., 'train' matches 'Training' if needed)
-    for d in candidates:
-        if name.lower() in d.lower():
-            return os.path.join(base, d)
-    raise FileNotFoundError(f"Expected subdir '{name}' under {base}")
+
+def _download_file(url: str, dst_path: str):
+    """Download with urllib (handles redirects)."""
+    req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urlopen(req) as r, open(dst_path, "wb") as f:
+        shutil.copyfileobj(r, f)
+
+def _extract_archive(archive_path: str, extract_to: str):
+    os.makedirs(extract_to, exist_ok=True)
+    if zipfile.is_zipfile(archive_path):
+        with zipfile.ZipFile(archive_path) as zf:
+            zf.extractall(extract_to)
+    elif tarfile.is_tarfile(archive_path):
+        with tarfile.open(archive_path) as tf:
+            tf.extractall(extract_to)
+    else:
+        raise RuntimeError(f"Unsupported archive: {archive_path}")
+
+def _flatten_single_topdir(src_root: str, dst_root: str):
+    """
+    If src_root has exactly one top-level dir, move its contents into dst_root.
+    """
+    entries = [d for d in os.listdir(src_root) if not d.startswith(".")]
+    if len(entries) == 1 and os.path.isdir(os.path.join(src_root, entries[0])):
+        inner = os.path.join(src_root, entries[0])
+        for name in os.listdir(inner):
+            src = os.path.join(inner, name)
+            dst = os.path.join(dst_root, name)
+            if os.path.exists(dst):
+                # merge folders; overwrite files
+                if os.path.isdir(src):
+                    for base, dirs, files in os.walk(src):
+                        rel = os.path.relpath(base, src)
+                        outdir = os.path.join(dst, rel)
+                        os.makedirs(outdir, exist_ok=True)
+                        for f in files:
+                            shutil.copy2(os.path.join(base, f), os.path.join(outdir, f))
+                else:
+                    shutil.copy2(src, dst)
+            else:
+                shutil.move(src, dst)
+
+def _ensure_downloaded_dataset(dataset_root: str, download_url: str | None):
+    """
+    If dataset_root doesn't exist, optionally download & extract an archive from download_url.
+    """
+    if os.path.isdir(dataset_root):
+        return
+
+    if not download_url:
+        # Create empty structure so the error message is clear and paths exist
+        _ensure_covid_structure(dataset_root)
+        raise RuntimeError(
+            "CovidDataset not found and no download_url provided.\n"
+            f"Created folders at: {dataset_root}\n"
+            "Populate Train/Normal, Val/Normal, Val/Covid or pass download_url to auto-download."
+        )
+
+    os.makedirs(dataset_root, exist_ok=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        archive_path = os.path.join(tmp, "covid_dataset_archive")
+        print(f"[COVID] Downloading dataset from:\n  {download_url}")
+        _download_file(download_url, archive_path)
+        print(f"[COVID] Extracting to temp...")
+        extract_here = os.path.join(tmp, "extract")
+        _extract_archive(archive_path, extract_here)
+        # Move contents into dataset_root
+        _flatten_single_topdir(extract_here, dataset_root)
+        # If the archive already *is* a CovidDataset folder, we now have it in dataset_root.
+
+    print(f"[COVID] Dataset prepared at: {dataset_root}")
+
+def _list_images_recursive(root_dir: str, exts=(".png", ".jpg", ".jpeg", ".bmp")):
+    """Recursively list image files (case-insensitive extensions)."""
+    exts = tuple(e.lower() for e in exts)
+    out = []
+    for base, _, files in os.walk(root_dir):
+        for f in files:
+            if f.lower().endswith(exts):
+                out.append(os.path.join(base, f))
+    return sorted(out)
 
 def get_dataloader_covid19(
     dataset_root: str,
     input_size: int = 256,
     batch_size: int = 16,
     num_workers: int = 2,
+    download_url: str | None = None,   # ← add this
 ):
     """
     Returns:
@@ -283,30 +359,24 @@ def get_dataloader_covid19(
         <root>/Val/Normal,   <root>/Val/Covid
     Training uses only Normal from Train; testing uses Val/Normal vs Val/Covid.
     """
-    # Folders (case-insensitive resolution)
-    # train_dir = _find_subdir_ci(dataset_root, "Train")
-    # val_dir   = _find_subdir_ci(dataset_root, "Val")
+    # 0) If missing, download & extract
+    _ensure_downloaded_dataset(dataset_root, download_url)
 
-    # train_normal_dir = _find_subdir_ci(train_dir, "Normal")
-    # val_normal_dir   = _find_subdir_ci(val_dir, "Normal")
-    # val_covid_dir    = _find_subdir_ci(val_dir, "Covid")
-    
-    # 1) Make sure the expected folders exist (create them if not)
+    # ensure standard structure (creates if not there)
     train_normal_dir, val_normal_dir, val_covid_dir = _ensure_covid_structure(dataset_root)
 
-    # 2) If they’re empty, give a clear, non-crashing message
-    def _has_images(d: str):
-        return any(glob.glob(os.path.join(d, p)) for p in ("*.png", "*.jpg", "*.jpeg", "*.bmp"))
+    # recursive image discovery (case-insensitive)
+    train_normal_imgs = _list_images_recursive(train_normal_dir)
+    val_normal_imgs   = _list_images_recursive(val_normal_dir)
+    val_covid_imgs    = _list_images_recursive(val_covid_dir)
 
-    if not (_has_images(train_normal_dir) and _has_images(val_normal_dir) and _has_images(val_covid_dir)):
-        raise RuntimeError(
-            "CovidDataset is prepared but empty.\n"
-            f"Please download/copy images into:\n"
-            f"  - {train_normal_dir}  (Normal train images)\n"
-            f"  - {val_normal_dir}    (Normal val images)\n"
-            f"  - {val_covid_dir}     (Covid val images)\n"
-            "Then re-run."
-        )
+    if not (train_normal_imgs and val_normal_imgs and val_covid_imgs):
+        msg = ["CovidDataset structure found but some folders have no images:"]
+        msg.append(f"  - Train/Normal: {len(train_normal_imgs)} files @ {train_normal_dir}")
+        msg.append(f"  - Val/Normal:   {len(val_normal_imgs)} files @ {val_normal_dir}")
+        msg.append(f"  - Val/Covid:    {len(val_covid_imgs)} files @ {val_covid_dir}")
+        msg.append("If the archive used a different layout, move/rename into this structure.")
+        raise RuntimeError("\n".join(msg))
 
     # Transforms (match your other loaders)
     imagenet_mean = [0.485, 0.456, 0.406]

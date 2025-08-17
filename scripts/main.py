@@ -84,6 +84,9 @@ def covid19():
     # DATA_DIR = os.path.join("..", "CovidDataset")
     DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "CovidDataset"))
 
+    # Figshare file URL (replace with your own mirror if you have a prepared ZIP)
+    DOWNLOAD_URL = "https://figshare.com/ndownloader/files/50920287"  # direct file endpoint
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     print(torch.__version__)
@@ -92,6 +95,7 @@ def covid19():
         dataset_root=DATA_DIR,
         input_size=INPUT_SIZE,
         batch_size=BATCH_SIZE,
+        download_url=DOWNLOAD_URL,      # ← auto-download if missing
     )
 
     best_model = train(
