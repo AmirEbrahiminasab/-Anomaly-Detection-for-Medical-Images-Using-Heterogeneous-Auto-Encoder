@@ -80,23 +80,22 @@ def brain_tumor():
 	)
 
 def covid19():
-    # Point this to your folder with Train/Normal, Train/Covid, Val/Normal, Val/Covid
-    # DATA_DIR = os.path.join("..", "CovidDataset")
     DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "CovidDataset"))
+    DOWNLOAD_URL = "https://figshare.com/ndownloader/files/50920287"  # used ONLY if folder missing
 
-    # Figshare file URL (replace with your own mirror if you have a prepared ZIP)
-    DOWNLOAD_URL = "https://figshare.com/ndownloader/files/50920287"  # direct file endpoint
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     print(torch.__version__)
 
     train_loader, test_normal_loader, test_abnormal_loader = get_dataloader_covid19(
-        dataset_root=DATA_DIR,
-        input_size=INPUT_SIZE,
-        batch_size=BATCH_SIZE,
-        download_url=DOWNLOAD_URL,      # ← auto-download if missing
-    )
+		dataset_root=DATA_DIR,
+		input_size=INPUT_SIZE,
+		batch_size=BATCH_SIZE,
+		download_url=DOWNLOAD_URL,
+		normals_dir=None,
+		covid_val_ratio=1.0,
+	)
 
     best_model = train(
         train_loader, test_normal_loader, test_abnormal_loader,
