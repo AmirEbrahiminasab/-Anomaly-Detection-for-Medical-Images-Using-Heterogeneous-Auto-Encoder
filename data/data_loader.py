@@ -205,48 +205,21 @@ def get_dataloader_brain_tumor(dataset_root='', input_size=256, batch_size=16):
     
     return train_loader, test_normal_loader, test_abnormal_loader
 
-
 # ──────────────────────────────────────────────────────────────────────────────
-# COVID dataset
-# Train on:  <root>/Train/Normal
-# Test on:   <root>/Val/Normal  vs  <root>/Val/Covid
+# COVID-19 loader (no metadata; download only if folder absent)
+# Returns: train_loader, test_normal_loader, test_abnormal_loader
 # ──────────────────────────────────────────────────────────────────────────────
-import os, glob
-from typing import List
+import os, shutil, tempfile, zipfile, tarfile
+from urllib.request import urlopen, Request
+from typing import List, Iterable, Optional
 from PIL import Image
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
-import shutil
-import tarfile
-import tempfile
-import zipfile
-from urllib.request import urlopen, Request
 
-class Covid19_Dataset(Dataset):
-    """Image-only dataset over a directory of images (jpg/png/jpeg)."""
-    def __init__(self, root_dir: str, transform=None):
-        self.image_paths: List[str] = []
-        for ext in ('*.jpeg', '*.jpg', '*.png'):
-            self.image_paths += glob.glob(os.path.join(root_dir, ext))
-        self.image_paths = sorted(self.image_paths)
-        self.transform = transform
-        if not self.image_paths:
-            raise RuntimeError(f"No images found in {root_dir}")
-
-    def __len__(self):
-        return len(self.image_paths)
-
-    def __getitem__(self, idx: int):
-        p = self.image_paths[idx]
-        img = Image.open(p).convert("RGB")
-        if self.transform:
-            img = self.transform(img)
-        return img
-
+# ---------- helpers ----------
 def _download_file(url: str, dst_path: str):
-    """Download with urllib (handles redirects)."""
     req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urlopen(req) as r, open(dst_path, "wb") as f:
         shutil.copyfileobj(r, f)
@@ -263,9 +236,6 @@ def _extract_archive(archive_path: str, extract_to: str):
         raise RuntimeError(f"Unsupported archive: {archive_path}")
 
 def _flatten_single_topdir(src_root: str, dst_root: str):
-    """
-    If src_root has exactly one top-level dir, move its contents into dst_root.
-    """
     entries = [d for d in os.listdir(src_root) if not d.startswith(".")]
     if len(entries) == 1 and os.path.isdir(os.path.join(src_root, entries[0])):
         inner = os.path.join(src_root, entries[0])
@@ -273,9 +243,8 @@ def _flatten_single_topdir(src_root: str, dst_root: str):
             src = os.path.join(inner, name)
             dst = os.path.join(dst_root, name)
             if os.path.exists(dst):
-                # merge folders; overwrite files
                 if os.path.isdir(src):
-                    for base, dirs, files in os.walk(src):
+                    for base, _, files in os.walk(src):
                         rel = os.path.relpath(base, src)
                         outdir = os.path.join(dst, rel)
                         os.makedirs(outdir, exist_ok=True)
@@ -287,17 +256,12 @@ def _flatten_single_topdir(src_root: str, dst_root: str):
                 shutil.move(src, dst)
 
 def _ensure_download_if_missing(dataset_root: str, download_url: Optional[str]):
-    """Download & extract only if the folder itself doesn't exist."""
     if os.path.isdir(dataset_root):
-        return  # <-- do nothing; don't rely on inner contents
-
+        return  # do nothing; don't inspect contents
+    os.makedirs(dataset_root, exist_ok=True)
     if not download_url:
-        # create empty dir so downstream code can continue without validation
-        os.makedirs(dataset_root, exist_ok=True)
         print(f"[COVID] Created empty dataset root at: {dataset_root} (no download_url provided)")
         return
-
-    os.makedirs(dataset_root, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         archive_path = os.path.join(tmp, "covid_dataset_archive")
         print(f"[COVID] Downloading dataset (first-time setup):\n  {download_url}")
@@ -308,10 +272,19 @@ def _ensure_download_if_missing(dataset_root: str, download_url: Optional[str]):
         _flatten_single_topdir(extract_here, dataset_root)
     print(f"[COVID] Dataset prepared at: {dataset_root}")
 
-class ListImageDataset(Dataset):
+def _list_images_recursive(root_dir: str, exts: Iterable[str] = (".png",".jpg",".jpeg",".bmp",".tif",".tiff",".gif")) -> List[str]:
+    exts = tuple(e.lower() for e in exts)
+    out = []
+    for base, _, files in os.walk(root_dir):
+        for f in files:
+            if f.lower().endswith(exts):
+                out.append(os.path.join(base, f))
+    return sorted(out)
+
+class _ListImageDataset(Dataset):
     def __init__(self, image_paths: List[str], transform=None, allow_empty: bool=False):
         if not image_paths and not allow_empty:
-            raise RuntimeError("ListImageDataset got an empty list.")
+            raise RuntimeError("Empty image list for dataset.")
         self.image_paths = image_paths
         self.transform = transform
 
@@ -322,83 +295,68 @@ class ListImageDataset(Dataset):
         if self.transform: img = self.transform(img)
         return img
 
-def _list_images_recursive(root_dir: str, exts=(".png", ".jpg", ".jpeg", ".bmp")):
-    """Recursively list image files (case-insensitive extensions)."""
-    exts = tuple(e.lower() for e in exts)
-    out = []
-    for base, _, files in os.walk(root_dir):
-        for f in files:
-            if f.lower().endswith(exts):
-                out.append(os.path.join(base, f))
-    return sorted(out)
-
-# ==== helper to find sibling chest_xray normals (case-insensitive) ====
-def _find_ci(base: str, name: str) -> Optional[str]:
-    if not os.path.isdir(base): return None
-    for d in os.listdir(base):
-        p = os.path.join(base, d)
-        if os.path.isdir(p) and d.lower() == name.lower():
-            return p
-    for d in os.listdir(base):
-        p = os.path.join(base, d)
-        if os.path.isdir(p) and name.lower() in d.lower():
-            return p
-    return None
-
-def _discover_chest_xray_normals(repo_root: str) -> Tuple[List[str], List[str]]:
-    """
-    Return (train_normals, val_normals) image lists from ../chest_xray/{train,val}/NORMAL.
-    """
-    cx_root = _find_ci(repo_root, "chest_xray")
-    if not cx_root: return [], []
-    train_dir = _find_ci(cx_root, "train") or _find_ci(cx_root, "Train")
-    val_dir   = _find_ci(cx_root, "val")   or _find_ci(cx_root, "validation") or _find_ci(cx_root, "Val")
-    if not train_dir or not val_dir: return [], []
-    train_normal = _find_ci(train_dir, "NORMAL") or _find_ci(train_dir, "Normal")
-    val_normal   = _find_ci(val_dir,   "NORMAL") or _find_ci(val_dir,   "Normal")
-    if not train_normal or not val_normal: return [], []
-    return _list_images_recursive(train_normal), _list_images_recursive(val_normal)
-
+# ---------- main API ----------
 def get_dataloader_covid19(
     dataset_root: str,
     input_size: int = 256,
     batch_size: int = 16,
     num_workers: int = 2,
-    download_url: Optional[str] = None,
-    normals_dir: Optional[str] = None,
-    covid_val_ratio: float = 1.0,
+    download_url: Optional[str] = "https://figshare.com/ndownloader/files/50920287",
+    # keyword-based class inference (case-insensitive)
+    normal_keywords: Iterable[str] = ("normal", "no finding", "negative"),
+    covid_keywords: Iterable[str]  = ("covid", "sars-cov", "sarscov", "pneumonia", "opacity", "infiltrate"),
 ):
-    # Only download if the folder doesn't exist. Do not inspect contents.
+    """
+    Only download if dataset_root folder is missing.
+    Build three loaders:
+      - train_loader: NORMAL (80% of normals)
+      - test_normal_loader: remaining 20% of normals
+      - test_abnormal_loader: COVID
+    If class keywords aren't present, fallback: split all images 80/20 to act as train/test_normal,
+    and leave test_abnormal empty (with a warning).
+    """
+    # 0) Download folder ONLY if missing
     _ensure_download_if_missing(dataset_root, download_url)
 
-    # Collect COVID images (may be empty; that’s fine)
-    covid_imgs = _list_images_recursive(dataset_root)
+    # 1) Scan all images (whatever is inside; we don't validate structure)
+    all_imgs = _list_images_recursive(dataset_root)
+    if not all_imgs:
+        raise RuntimeError(f"No images found under {dataset_root}. If you expected auto-download, check the URL/connection.")
 
-    # Get NORMALs (from sibling chest_xray by default)
-    repo_root = os.path.abspath(os.path.join(dataset_root, ".."))
-    if normals_dir:
-        normal_train_imgs = _list_images_recursive(os.path.join(normals_dir, "train")) + \
-                            _list_images_recursive(os.path.join(normals_dir, "Train")) or \
-                            _list_images_recursive(normals_dir)
-        normal_val_imgs   = _list_images_recursive(os.path.join(normals_dir, "val")) + \
-                            _list_images_recursive(os.path.join(normals_dir, "Val"))
-    else:
-        normal_train_imgs, normal_val_imgs = _discover_chest_xray_normals(repo_root)
+    # 2) Try to infer classes by keywords in path
+    def _contains_any(s: str, keys: Iterable[str]) -> bool:
+        s = s.lower()
+        return any(k.lower() in s for k in keys)
 
-    if not normal_train_imgs or not normal_val_imgs:
-        raise RuntimeError(
-            "Could not find NORMAL images.\n"
-            "Provide `normals_dir` (root containing train/val NORMAL) OR ensure a sibling 'chest_xray' dataset exists."
-        )
+    normals = [p for p in all_imgs if _contains_any(p, normal_keywords)]
+    covids  = [p for p in all_imgs if _contains_any(p, covid_keywords)]
+    # Avoid overlaps: prefer covid if both match
+    covids_set = set(covids)
+    normals = [p for p in normals if p not in covids_set]
 
-    # Split COVID into train/val virtually (we only use val as abnormal set)
     rng = np.random.RandomState(42)
-    idx = rng.permutation(len(covid_imgs))
-    split = int((1.0 - covid_val_ratio) * max(0, len(idx)))
-    covid_train = [covid_imgs[i] for i in idx[:split]]
-    covid_val   = [covid_imgs[i] for i in idx[split:]]
 
-    # Transforms
+    # 3) If we detected some normals, use them; else fallback to pseudo-split
+    if len(normals) > 0:
+        idx = rng.permutation(len(normals))
+        split_n = max(1, int(0.8 * len(idx)))
+        train_normals = [normals[i] for i in idx[:split_n]]
+        test_normals  = [normals[i] for i in idx[split_n:]] or [normals[idx[0]]]  # ensure non-empty
+        test_covids   = covids  # may be empty; that's fine
+        if len(test_covids) == 0:
+            print("[WARN] No COVID matches by keywords; test_abnormal will be empty.")
+    else:
+        # Fallback: no obvious normals → split all images 80/20 as "normal train/test"
+        # and leave abnormal empty (so pipeline still runs).
+        print("[WARN] Could not infer NORMAL/COVID by path keywords. "
+              "Falling back to 80/20 split as train/test_normal; test_abnormal is empty.")
+        idx = rng.permutation(len(all_imgs))
+        split_n = max(1, int(0.8 * len(idx)))
+        train_normals = [all_imgs[i] for i in idx[:split_n]]
+        test_normals  = [all_imgs[i] for i in idx[split_n:]] or [all_imgs[idx[0]]]
+        test_covids   = []
+
+    # 4) Transforms (ImageNet stats; same style as others)
     imagenet_mean = [0.485, 0.456, 0.406]
     imagenet_std  = [0.229, 0.224, 0.225]
     train_tfm = transforms.Compose([
@@ -414,10 +372,10 @@ def get_dataloader_covid19(
         transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
     ])
 
-    # Datasets (allow empty abnormal set; evaluation will simply see 0 batches)
-    train_dataset         = ListImageDataset(normal_train_imgs, transform=train_tfm)
-    test_normal_dataset   = ListImageDataset(normal_val_imgs,   transform=test_tfm)
-    test_abnormal_dataset = ListImageDataset(covid_val,         transform=test_tfm, allow_empty=True)
+    # 5) Datasets & Loaders
+    train_dataset         = _ListImageDataset(train_normals, transform=train_tfm)
+    test_normal_dataset   = _ListImageDataset(test_normals, transform=test_tfm)
+    test_abnormal_dataset = _ListImageDataset(test_covids, transform=test_tfm, allow_empty=True)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                               num_workers=num_workers, pin_memory=True)
@@ -431,8 +389,8 @@ def get_dataloader_covid19(
     print(f"[COVID] Test  (Normal): {len(test_normal_dataset)}")
     print(f"[COVID] Test  (Covid):  {len(test_abnormal_dataset)}")
     if len(test_abnormal_dataset) == 0:
-        print("[WARN] No COVID images found under CovidDataset; abnormal test set is empty.")
-    print(f"[COVID] covid_val_ratio={covid_val_ratio:.2f}  (covid_train={len(covid_train)}, covid_val={len(covid_val)})")
+        print("[INFO] test_abnormal_loader is empty (no COVID matches found).")
     print("-" * 36)
 
     return train_loader, test_normal_loader, test_abnormal_loader
+

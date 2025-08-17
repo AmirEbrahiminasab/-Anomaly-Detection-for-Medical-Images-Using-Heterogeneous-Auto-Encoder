@@ -81,8 +81,6 @@ def brain_tumor():
 
 def covid19():
     DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "CovidDataset"))
-    DOWNLOAD_URL = "https://figshare.com/ndownloader/files/50920287"  # used ONLY if folder missing
-
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -92,10 +90,9 @@ def covid19():
 		dataset_root=DATA_DIR,
 		input_size=INPUT_SIZE,
 		batch_size=BATCH_SIZE,
-		download_url=DOWNLOAD_URL,
-		normals_dir=None,
-		covid_val_ratio=1.0,
+		download_url="https://figshare.com/ndownloader/files/50920287",  # used only if folder missing
 	)
+
 
     best_model = train(
         train_loader, test_normal_loader, test_abnormal_loader,
