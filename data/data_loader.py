@@ -332,38 +332,15 @@ def get_dataloader_covid19(
     _ensure_download_if_missing(dataset_root, download_url)
 
     # 1) Scan for all images within the dataset directory
-    all_imgs = _list_images_recursive(dataset_root)
-    if not all_imgs:
-        raise RuntimeError(f"No images found in {dataset_root}. Please check the dataset integrity.")
-
-    # 2) Infer image classes based on keywords in their file paths
-    def _contains_any(s: str, keys: Iterable[str]) -> bool:
-        s = s.lower()
-        return any(k.lower() in s for k in keys)
-
-    normals = [p for p in all_imgs if _contains_any(p, normal_keywords)]
-    covids  = [p for p in all_imgs if _contains_any(p, covid_keywords)]
-    covids_set = set(covids)
-    normals = [p for p in normals if p not in covids_set]
-
-    rng = np.random.RandomState(42)
-
-    # 3) Split data into training and testing sets
-    if len(normals) > 0:
-        idx = rng.permutation(len(normals))
-        split_n = max(1, int(0.8 * len(idx)))
-        train_normals = [normals[i] for i in idx[:split_n]]
-        test_normals  = [normals[i] for i in idx[split_n:]] or [normals[idx[0]]]
-        test_covids   = covids
-        if not test_covids:
-            print("[WARN] No COVID-19 images found based on keywords; 'test_abnormal_loader' will be empty.")
-    else:
-        print("[WARN] Could not find NORMAL/COVID images by path keywords. Falling back to an 80/20 split.")
-        idx = rng.permutation(len(all_imgs))
-        split_n = max(1, int(0.8 * len(idx)))
-        train_normals = [all_imgs[i] for i in idx[:split_n]]
-        test_normals  = [all_imgs[i] for i in idx[split_n:]] or [all_imgs[idx[0]]]
-        test_covids   = []
+    train_imgs = _list_images_recursive(os.path.join(dataset_root, 'Train/Normal'))
+    test_normal_imgs = _list_images_recursive(os.path.join(dataset_root, 'Val/Normal'))
+    test_abnormal_imgs = _list_images_recursive(os.path.join(dataset_root, 'Val/Covid'))
+    if not train_imgs:
+        raise RuntimeError(f"No images found in {os.path.join(dataset_root, 'Train/Normal')}. Please check the dataset integrity.")
+    if not test_normal_imgs:
+        raise RuntimeError(f"No images found in {os.path.join(dataset_root, 'Val/Normal')}. Please check the dataset integrity.")
+    if not test_abnormal_imgs:
+        raise RuntimeError(f"No images found in {os.path.join(dataset_root, 'Val/Covid')}. Please check the dataset integrity.")
 
     # 4) Define image transformations
     imagenet_mean = [0.485, 0.456, 0.406]
