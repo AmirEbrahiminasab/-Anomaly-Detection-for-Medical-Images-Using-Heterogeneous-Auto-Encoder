@@ -359,9 +359,9 @@ def get_dataloader_covid19(
     ])
 
     # 5) Create datasets and dataloaders
-    train_dataset         = _ListImageDataset(train_normals, transform=train_tfm)
-    test_normal_dataset   = _ListImageDataset(test_normals, transform=test_tfm)
-    test_abnormal_dataset = _ListImageDataset(test_covids, transform=test_tfm, allow_empty=True)
+    train_dataset         = _ListImageDataset(train_imgs, transform=train_tfm)
+    test_normal_dataset   = _ListImageDataset(test_normal_imgs, transform=test_tfm)
+    test_abnormal_dataset = _ListImageDataset(test_abnormal_imgs, transform=test_tfm, allow_empty=True)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
     test_normal_loader = DataLoader(test_normal_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
