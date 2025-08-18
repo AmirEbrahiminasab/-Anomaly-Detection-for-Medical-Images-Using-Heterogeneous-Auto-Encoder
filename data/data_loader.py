@@ -243,7 +243,11 @@ def _extract_archive(archive_path: str, extract_to: str):
         raise RuntimeError(f"Unsupported archive format: {archive_path}")
 
 def _ensure_download_if_missing(dataset_root: str, download_url: Optional[str]):
-    """Downloads and extracts the dataset if the root directory is empty."""
+    """
+    Downloads and extracts the dataset if the root directory is empty.
+    This version handles archives with a single nested top-level directory to
+    avoid paths like `CovidDataset/CovidDataset`.
+    """
     if os.path.isdir(dataset_root) and os.listdir(dataset_root):
         print(f"[COVID] Dataset already exists at: {dataset_root}")
         return
@@ -254,13 +258,31 @@ def _ensure_download_if_missing(dataset_root: str, download_url: Optional[str]):
         print(f"[COVID] Created empty dataset root at: {dataset_root} (no download_url provided)")
         return
     
-    with tempfile.TemporaryDirectory() as tmp:
-        archive_path = os.path.join(tmp, "covid_dataset_archive.zip")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        archive_path = os.path.join(tmpdir, "covid_dataset_archive.zip")
+        extract_path = os.path.join(tmpdir, "extracted_data")
+        
         print(f"[COVID] Downloading dataset from:\n  {download_url}")
         _download_file(download_url, archive_path)
-        print(f"[COVID] Extracting dataset to: {dataset_root}")
-        _extract_archive(archive_path, dataset_root)
         
+        print(f"[COVID] Extracting dataset to a temporary location...")
+        _extract_archive(archive_path, extract_path)
+        
+        # Check if the archive extracted into a single directory (e.g., 'CovidDataset')
+        extracted_items = os.listdir(extract_path)
+        source_dir = extract_path
+        if len(extracted_items) == 1 and os.path.isdir(os.path.join(extract_path, extracted_items[0])):
+            # If so, set the source for the move operation to be that inner directory
+            print(f"[COVID] Detected nested folder '{extracted_items[0]}', adjusting path.")
+            source_dir = os.path.join(extract_path, extracted_items[0])
+
+        # Move the actual content into the final dataset_root
+        print(f"[COVID] Moving files to final destination: {dataset_root}")
+        for item_name in os.listdir(source_dir):
+            source_item = os.path.join(source_dir, item_name)
+            dest_item = os.path.join(dataset_root, item_name)
+            shutil.move(source_item, dest_item)
+            
     print(f"[COVID] Dataset successfully prepared at: {dataset_root}")
 
 def _list_images_recursive(root_dir: str, exts: Iterable[str] = (".png",".jpg",".jpeg",".bmp",".tif",".tiff",".gif")) -> List[str]:
@@ -298,19 +320,13 @@ def get_dataloader_covid19(
     batch_size: int = 16,
     num_workers: int = 2,
     download_url: Optional[str] = "https://figshare.com/ndownloader/files/50920287",
-    # keyword-based class inference (case-insensitive)
     normal_keywords: Iterable[str] = ("normal", "no finding", "negative"),
-    covid_keywords: Iterable[str]  = ("covid", "sars-cov", "sarscov", "pneumonia", "opacity", "infiltrate"),
+    covid_keywords: Iterable[str]  = ("Covid", "covid", "sars-cov", "sarscov", "pneumonia", "opacity", "infiltrate"),
 ):
     """
     Downloads and prepares the COVID-19 dataset and returns data loaders.
     - Downloads the dataset if `dataset_root` is missing or empty.
-    - Splits the data into three sets:
-      - train_loader: 80% of normal images.
-      - test_normal_loader: Remaining 20% of normal images.
-      - test_abnormal_loader: All COVID-19 images.
-    - If keywords for classes are not found, it falls back to an 80/20 split of all images
-      for training and testing normal, leaving the abnormal set empty with a warning.
+    - Splits the data into training, normal testing, and abnormal (COVID) testing sets.
     """
     # 0) Download and extract the dataset if it's missing
     _ensure_download_if_missing(dataset_root, download_url)
@@ -327,8 +343,6 @@ def get_dataloader_covid19(
 
     normals = [p for p in all_imgs if _contains_any(p, normal_keywords)]
     covids  = [p for p in all_imgs if _contains_any(p, covid_keywords)]
-    
-    # Avoid overlaps by prioritizing COVID-19 classification
     covids_set = set(covids)
     normals = [p for p in normals if p not in covids_set]
 
@@ -341,12 +355,10 @@ def get_dataloader_covid19(
         train_normals = [normals[i] for i in idx[:split_n]]
         test_normals  = [normals[i] for i in idx[split_n:]] or [normals[idx[0]]]
         test_covids   = covids
-        if len(test_covids) == 0:
+        if not test_covids:
             print("[WARN] No COVID-19 images found based on keywords; 'test_abnormal_loader' will be empty.")
     else:
-        # Fallback if no normal images are identified
-        print("[WARN] Could not find NORMAL/COVID images by path keywords. "
-              "Falling back to an 80/20 split for train/test normal. 'test_abnormal_loader' will be empty.")
+        print("[WARN] Could not find NORMAL/COVID images by path keywords. Falling back to an 80/20 split.")
         idx = rng.permutation(len(all_imgs))
         split_n = max(1, int(0.8 * len(idx)))
         train_normals = [all_imgs[i] for i in idx[:split_n]]
@@ -374,12 +386,9 @@ def get_dataloader_covid19(
     test_normal_dataset   = _ListImageDataset(test_normals, transform=test_tfm)
     test_abnormal_dataset = _ListImageDataset(test_covids, transform=test_tfm, allow_empty=True)
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
-                              num_workers=num_workers, pin_memory=True)
-    test_normal_loader = DataLoader(test_normal_dataset, batch_size=batch_size, shuffle=False,
-                                    num_workers=num_workers, pin_memory=True)
-    test_abnormal_loader = DataLoader(test_abnormal_dataset, batch_size=batch_size, shuffle=False,
-                                      num_workers=num_workers, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+    test_normal_loader = DataLoader(test_normal_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+    test_abnormal_loader = DataLoader(test_abnormal_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
 
     print("-" * 36)
     print(f"[COVID] Train (Normal): {len(train_dataset)} images")

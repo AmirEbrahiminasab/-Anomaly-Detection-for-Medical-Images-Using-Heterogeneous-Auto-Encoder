@@ -80,7 +80,8 @@ def brain_tumor():
 	)
 
 def covid19():
-    DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "CovidDataset"))
+    # DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "CovidDataset"))
+    DATA_DIR = "/home/appliedailab/Desktop/Deep"
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
