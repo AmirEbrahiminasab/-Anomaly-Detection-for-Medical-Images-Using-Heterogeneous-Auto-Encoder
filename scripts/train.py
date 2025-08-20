@@ -13,6 +13,7 @@ from torchvision import models
 from typing import List, Dict
 import math
 import copy
+import random
 
 # Add necessary imports from sklearn for calculating accuracy and roc_curve
 from sklearn.metrics import roc_curve, accuracy_score, f1_score
@@ -20,6 +21,16 @@ from sklearn.metrics import roc_curve, accuracy_score, f1_score
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from models import model as modell
 from scripts import evaluate
+
+
+def set_seed(seed: int = 42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 def train(train_loader, test_normal_loader, test_abnormal_loader, epochs, device, alpha_loss, learning_rate, input_size,
@@ -30,6 +41,8 @@ def train(train_loader, test_normal_loader, test_abnormal_loader, epochs, device
     Args:
         patience (int): Number of epochs to wait for improvement before stopping early.
     """
+    set_seed(42)
+
     model = modell.HeteroAE(input_size=input_size).to(device)
     loss_fn = evaluate.FeatureComparisonLoss(alpha=alpha_loss).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
