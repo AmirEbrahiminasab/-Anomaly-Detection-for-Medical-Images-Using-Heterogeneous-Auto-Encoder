@@ -28,7 +28,7 @@ def chest_xray():
 
     best_model = train(
         train_loader, test_normal_loader, test_abnormal_loader,
-        EPOCHS, device, ALPHA_LOSS, 3e-4, INPUT_SIZE, patience=5
+        EPOCHS, device, ALPHA_LOSS, LEARNING_RATE, INPUT_SIZE, patience=500
     )
 
     SAVE_DIR = 'models/saved_models'
@@ -61,7 +61,7 @@ def brain_tumor():
 
     best_model = train(
         train_loader, test_normal_loader, test_abnormal_loader,
-        EPOCHS, device, ALPHA_LOSS, 3e-4, INPUT_SIZE, patience=300
+        EPOCHS, device, ALPHA_LOSS, LEARNING_RATE, INPUT_SIZE, patience=500
     )
 
     SAVE_DIR = 'models/saved_models'
@@ -96,7 +96,7 @@ def covid19():
 
     best_model = train(
         train_loader, test_normal_loader, test_abnormal_loader,
-        EPOCHS, device, ALPHA_LOSS, LEARNING_RATE, INPUT_SIZE
+        EPOCHS, device, ALPHA_LOSS, LEARNING_RATE, INPUT_SIZE, patience=500
     )
 
     SAVE_DIR = 'models/saved_models'
@@ -115,7 +115,7 @@ def covid19():
 
 
 if __name__ == "__main__":
-    # chest_xray()
-    # brain_tumor()
+    chest_xray()
+    brain_tumor()
     covid19()
 
