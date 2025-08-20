@@ -126,7 +126,6 @@ def oct2017():
         input_size=INPUT_SIZE,
         batch_size=BATCH_SIZE,
         kaggle_dataset_name="paultimothymooney/kermany2018",  # used only if folder missing
-        kaggle_config_dir="/home/appliedailab/Desktop/Deep/-Anomaly-Detection-for-Medical-Images-Using-Heterogeneous-Auto-Encoder/data/",
     )
 
     best_model = train(
@@ -149,8 +148,8 @@ def oct2017():
     )
     
 if __name__ == "__main__":
-    chest_xray()
-    brain_tumor()
-    covid19()
+    # chest_xray()
+    # brain_tumor()
+    # covid19()
     oct2017()
 

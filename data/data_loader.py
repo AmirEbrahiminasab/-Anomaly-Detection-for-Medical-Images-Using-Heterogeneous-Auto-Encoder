@@ -419,7 +419,10 @@ def get_dataloader_oct2017(
     num_workers: int = 2,
     kaggle_dataset_name: str = "paultimothymooney/kermany2018",
 ):
-    _ensure_download_if_missing(dataset_root, download_url=None, kaggle_dataset=True, kaggle_dataset_name=kaggle_dataset_name)
+    _ensure_download_if_missing(dataset_root, download_url=None, 
+                                kaggle_dataset=True, kaggle_dataset_name=kaggle_dataset_name,
+                                kaggle_config_dir="/home/appliedailab/Desktop/Deep/-Anomaly-Detection-for-Medical-Images-Using-Heterogeneous-Auto-Encoder/data/",
+                                )
 
     train_normal_dir = os.path.join(dataset_root, 'train', 'NORMAL')
     test_normal_dir = os.path.join(dataset_root, 'test', 'NORMAL')
