@@ -16,7 +16,7 @@ import copy
 import random
 
 # Add necessary imports from sklearn for calculating accuracy and roc_curve
-from sklearn.metrics import roc_curve, accuracy_score, f1_score
+from sklearn.metrics import roc_curve, accuracy_score, f1_score, roc_auc_score
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from models import model as modell
@@ -47,21 +47,24 @@ def train(train_loader, test_normal_loader, test_abnormal_loader, epochs, device
     loss_fn = evaluate.FeatureComparisonLoss(alpha=alpha_loss).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-    # Variables for tracking the best model and early stopping
-    best_accuracy = 0.0
+    # Use AUC as the primary metric for saving the best model, as it's better for imbalanced datasets.
+    best_auc = 0.0
     epochs_no_improve = 0
     best_model_state = None
 
     for epoch in range(epochs):
         model.train()
         running_loss = 0.0
-
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{epochs}")
         for images in progress_bar:
             images = images.to(device)
             optimizer.zero_grad()
             encoder_features, decoder_features = model(images)
-            loss = loss_fn(encoder_features, decoder_features)
+
+            enc_for_loss = [encoder_features['f1'], encoder_features['f2'], encoder_features['f3']]
+            dec_for_loss = [decoder_features['f1'], decoder_features['f2'], decoder_features['f3']]
+
+            loss = loss_fn(enc_for_loss, dec_for_loss)
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
@@ -70,58 +73,36 @@ def train(train_loader, test_normal_loader, test_abnormal_loader, epochs, device
         avg_train_loss = running_loss / len(train_loader)
         print(f"Epoch {epoch + 1} Average Training Loss: {avg_train_loss:.4f}")
 
-        # --- Start of Validation Phase ---
         model.eval()
-        all_scores = []
-        all_labels = []
+        all_scores, all_labels = [], []
         with torch.no_grad():
-            # Process normal (label 0) test images
-            for images in tqdm(test_normal_loader, desc="Evaluating Normal"):
-                images = images.to(device)
-                enc_feats, dec_feats = model(images)
-                _, anomaly_score = evaluate.calculate_anomaly_map(enc_feats, dec_feats,
-                                                                  input_size=(input_size, input_size))
-                all_scores.extend(anomaly_score.cpu().numpy())
-                all_labels.extend([0] * images.size(0))
+            for loader, label in [(test_normal_loader, 0), (test_abnormal_loader, 1)]:
+                desc = "Evaluating Normal" if label == 0 else "Evaluating Abnormal"
+                for images in tqdm(loader, desc=desc):
+                    images = images.to(device)
+                    enc_feats, dec_feats = model(images)
 
-            # Process abnormal (label 1) test images
-            for images in tqdm(test_abnormal_loader, desc="Evaluating Abnormal"):
-                images = images.to(device)
-                enc_feats, dec_feats = model(images)
-                _, anomaly_score = evaluate.calculate_anomaly_map(enc_feats, dec_feats,
-                                                                  input_size=(input_size, input_size))
-                all_scores.extend(anomaly_score.cpu().numpy())
-                all_labels.extend([1] * images.size(0))
+                    enc_for_map = [enc_feats['f1'], enc_feats['f2'], enc_feats['f3']]
+                    dec_for_map = [dec_feats['f1'], dec_feats['f2'], dec_feats['f3']]
+
+                    # Normalization is now handled inside calculate_anomaly_map
+                    anomaly_map = evaluate.calculate_anomaly_map(enc_for_map, dec_for_map, (input_size, input_size))
+
+                    anomaly_score = evaluate.get_anomaly_score(anomaly_map)
+                    all_scores.extend(anomaly_score.cpu().numpy())
+                    all_labels.extend([label] * images.size(0))
 
         y_true = np.array(all_labels)
         y_scores = np.array(all_scores)
 
-        # Find the best threshold to maximize validation accuracy
-        fpr, tpr, roc_thresholds = roc_curve(y_true, y_scores)
-        # compute F1 at each candidate threshold from roc_curve
-        f1_list = []
-        for thr in roc_thresholds:
-            y_pred_thr = (y_scores >= thr).astype(int)
-            # zero_division=0 avoids errors when there are no positives predicted
-            f1_list.append(f1_score(y_true, y_pred_thr, zero_division=0))
+        epoch_auc = roc_auc_score(y_true, y_scores)
+        print(f"Epoch {epoch + 1} Validation AUC: {epoch_auc:.4f}")
 
-        best_idx = int(np.argmax(f1_list))
-        best_threshold = float(roc_thresholds[best_idx])
-
-        # Use that threshold for binary predictions
-        y_pred = (y_scores >= best_threshold).astype(int)
-
-        epoch_accuracy = accuracy_score(y_true, y_pred)
-
-        print(f"Epoch {epoch + 1} Validation Accuracy: {epoch_accuracy:.4f}")
-
-        # --- Best Model Selection and Early Stopping Logic ---
-        if epoch_accuracy > best_accuracy:
-            best_accuracy = epoch_accuracy
+        if epoch_auc > best_auc:
+            best_auc = epoch_auc
             epochs_no_improve = 0
-            # Save the state of the best model found so far
             best_model_state = copy.deepcopy(model.state_dict())
-            print(f"🎉 New best model found with Accuracy: {best_accuracy:.4f}")
+            print(f"🎉 New best model found with AUC: {best_auc:.4f}")
         else:
             epochs_no_improve += 1
             print(f"No improvement for {epochs_no_improve} epoch(s).")
@@ -130,15 +111,9 @@ def train(train_loader, test_normal_loader, test_abnormal_loader, epochs, device
             print(f"\n🛑 Early stopping triggered after {patience} epochs without improvement.")
             break
 
-    # --- End of Training Loop ---
     print("\n--- Training Finished ---")
-
-    # Load the best model state before returning
     if best_model_state:
-        print(f"Loading best model with Accuracy: {best_accuracy:.4f}")
+        print(f"Loading best model with AUC: {best_auc:.4f}")
         model.load_state_dict(best_model_state)
-    else:
-        print("Warning: Training finished without a best model state being saved.")
-
     return model
 
