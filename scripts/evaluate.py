@@ -9,52 +9,72 @@ import numpy as np
 from tqdm import tqdm
 import torch.nn.functional as F
 from torchvision import models
-from typing import List, Dict
+from typing import List, Dict, Tuple
 import math
 
+def normalize_features(features: List[torch.Tensor]) -> List[torch.Tensor]:
+    """
+    Normalizes a list of feature maps along the channel dimension.
+    """
+    normalized = []
+    for feat in features:
+        # Normalize along the channel dimension (C) for each pixel
+        norm_feat = F.normalize(feat, p=2, dim=1)
+        normalized.append(norm_feat)
+    return normalized
 
 class FeatureComparisonLoss(nn.Module):
     def __init__(self, alpha: float = 0.7):
         super(FeatureComparisonLoss, self).__init__()
+        if not 0.0 <= alpha <= 1.0:
+            raise ValueError("alpha must be between 0 and 1.")
         self.alpha = alpha
+        self.cosine_similarity = nn.CosineSimilarity(dim=1)
+        self.mse_loss = nn.MSELoss(reduction='none')
 
-    def forward(self, features_enc: Dict[str, torch.Tensor], features_dec: Dict[str, torch.Tensor]) -> torch.Tensor:
-        # compute per-sample stage losses, then average over stages and batch
-        device = next(iter(features_enc.values())).device
-        batch_losses = None  # will be a tensor of shape (B,)
+    def forward(self, encoder_features: List[torch.Tensor], decoder_features: List[torch.Tensor]) -> torch.Tensor:
+        if len(encoder_features) != len(decoder_features):
+            raise ValueError("Encoder and decoder must have the same number of feature stages.")
 
-        stage_losses = []
-        for key in features_dec:
-            f_enc, f_dec = features_enc[key], features_dec[key]  # shapes: (B, C, H, W)
-            # Per-pixel cosine similarity (B, H, W)
-            cos_map = F.cosine_similarity(f_enc, f_dec, dim=1)  # value in [-1,1]
+        # --- FIX: Normalize features before loss calculation for consistency ---
+        norm_encoder_features = normalize_features(encoder_features)
+        norm_decoder_features = normalize_features(decoder_features)
 
-            # Per-pixel MSE across channels (B, H, W) -- match "MSE(FkE(h,w),FkD(h,w))"
-            mse_map = torch.mean((f_enc - f_dec) ** 2, dim=1)  # mean across channel dim
+        total_fc_loss = 0.0
+        for k, (enc_feat, dec_feat) in enumerate(zip(norm_encoder_features, norm_decoder_features)):
+            if enc_feat.shape != dec_feat.shape:
+                raise ValueError(f"Shape mismatch in stage {k}: encoder {enc_feat.shape}, decoder {dec_feat.shape}")
 
-            # Per-pixel L_k(h,w) = -alpha * cos + (1-alpha) * mse
-            Lk_map = -self.alpha * cos_map + (1.0 - self.alpha) * mse_map  # (B, H, W)
+            cos_sim = self.cosine_similarity(enc_feat, dec_feat)
+            mse = self.mse_loss(enc_feat, dec_feat).mean(dim=1)
+            loss_k_map = -self.alpha * cos_sim + (1 - self.alpha) * mse
+            stage_loss = torch.mean(loss_k_map)
+            total_fc_loss += stage_loss
+        return total_fc_loss
 
-            # Average over spatial dims -> per-sample scalar (B,)
-            Lk_per_sample = Lk_map.view(Lk_map.size(0), -1).mean(dim=1)  # (B,)
+def calculate_anomaly_map(encoder_features: List[torch.Tensor], decoder_features: List[torch.Tensor], input_image_size: Tuple[int, int]) -> torch.Tensor:
+    if len(encoder_features) != len(decoder_features):
+        raise ValueError("Encoder and decoder must have the same number of feature stages.")
 
-            stage_losses.append(Lk_per_sample)
+    # --- FIX: Move normalization inside the function to ensure it's always applied ---
+    norm_encoder_features = normalize_features(encoder_features)
+    norm_decoder_features = normalize_features(decoder_features)
 
-        # Sum stages and average -> per-sample loss
-        total_per_sample = sum(stage_losses)
+    batch_size = norm_encoder_features[0].size(0)
+    device = norm_encoder_features[0].device
+    final_anomaly_map = torch.zeros(batch_size, 1, *input_image_size, device=device)
+    cosine_similarity = nn.CosineSimilarity(dim=1)
 
-        # Finally average over batch -> scalar
-        return total_per_sample.mean()
+    for enc_feat, dec_feat in zip(norm_encoder_features, norm_decoder_features):
+        anomaly_map_k = 1 - cosine_similarity(enc_feat, dec_feat)
+        anomaly_map_k = anomaly_map_k.unsqueeze(1)
+        resized_anomaly_map_k = F.interpolate(anomaly_map_k, size=input_image_size, mode='bilinear', align_corners=False)
+        final_anomaly_map += resized_anomaly_map_k # --- FIX: Changed from average to sum ---
 
+    return final_anomaly_map
 
-def calculate_anomaly_map(features_enc: Dict[str, torch.Tensor], features_dec: Dict[str, torch.Tensor],
-                          input_size: tuple) -> tuple[torch.Tensor, torch.Tensor]:
-    anomaly_map = torch.zeros(features_enc['f1'].shape[0], 1, input_size[0], input_size[1]).to(features_enc['f1'].device)
-    for key in features_dec:
-        f_enc, f_dec = features_enc[key], features_dec[key]
-        m_k = 1 - F.cosine_similarity(f_enc, f_dec, dim=1).unsqueeze(1)
-        m_k_resized = F.interpolate(m_k, size=input_size, mode='bilinear', align_corners=False)
-        anomaly_map += m_k_resized
-    anomaly_score = torch.max(anomaly_map.flatten(1), dim=1)[0]
-    return anomaly_map, anomaly_score
-
+def get_anomaly_score(anomaly_map: torch.Tensor) -> torch.Tensor:
+    batch_size = anomaly_map.size(0)
+    flattened_map = anomaly_map.view(batch_size, -1)
+    anomaly_scores, _ = torch.max(flattened_map, dim=1)
+    return anomaly_scores
