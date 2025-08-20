@@ -42,15 +42,14 @@ def get_dataloader_chest_xray(input_size=256, batch_size=16):
     DATA_DIR = "/home/appliedailab/Desktop/Deep/chest_xray/chest_xray"
     imagenet_mean = [0.485, 0.456, 0.406]
     imagenet_std = [0.229, 0.224, 0.225]
-
     train_transform = transforms.Compose([
         transforms.Resize((input_size, input_size)),
-        transforms.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1)),
-        transforms.RandomHorizontalFlip(),
+        # transforms.RandomAffine(degrees=5, translate=(0.1, 0.1), scale=(0.9, 1.1)),
+        # transforms.RandomApply([transforms.ColorJitter(brightness=0.1, contrast=0.1)], p=0.5),
+        # transforms.RandomApply([transforms.GaussianBlur(kernel_size=3)], p=0.3),
         transforms.ToTensor(),
         transforms.Normalize(mean=imagenet_mean, std=imagenet_std)
     ])
-
     test_transform = transforms.Compose([
         transforms.Resize((input_size, input_size)),
         transforms.ToTensor(),
@@ -108,8 +107,8 @@ def get_dataloader_brain_tumor(dataset_root='', input_size=256, batch_size=16):
 
     train_transform = transforms.Compose([
         transforms.Resize((input_size, input_size)),
-        transforms.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1)),
-        transforms.RandomHorizontalFlip(),
+        # transforms.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1)),
+        # transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(mean=imagenet_mean, std=imagenet_std)
     ])
@@ -295,8 +294,8 @@ def get_dataloader_covid19(
     imagenet_std = [0.229, 0.224, 0.225]
     train_tfm = transforms.Compose([
         transforms.Resize((input_size, input_size)),
-        transforms.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1)),
-        transforms.RandomHorizontalFlip(),
+        # transforms.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1)),
+        # transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
     ])
