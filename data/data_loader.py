@@ -223,10 +223,10 @@ def _extract_archive(archive_path: str, extract_to: str):
 
 #     print(f"[COVID] Dataset successfully prepared at: {dataset_root}")
 
-def _ensure_download_if_missing(dataset_root: str, download_url: Optional[str], kaggle_dataset: bool = False, kaggle_dataset_name: Optional[str] = None):
+def _ensure_download_if_missing(dataset_root: str, download_url: Optional[str], kaggle_dataset: bool = False, kaggle_dataset_name: Optional[str] = None, kaggle_config_dir: Optional[str] = None):
     """
     Downloads and extracts the dataset if the root directory is empty.
-    Handles Kaggle datasets if kaggle_dataset is True.
+    Handles Kaggle datasets if kaggle_dataset is True, using a custom kaggle.json location if specified.
     Adjusts for nested folder structures to avoid redundant paths.
     """
     if os.path.isdir(dataset_root) and os.listdir(dataset_root):
@@ -247,6 +247,17 @@ def _ensure_download_if_missing(dataset_root: str, download_url: Optional[str], 
         
         if not kaggle_dataset_name:
             raise ValueError("Kaggle dataset name must be provided for Kaggle downloads.")
+        
+        # Set KAGGLE_CONFIG_DIR to custom directory if provided
+        if kaggle_config_dir:
+            os.environ['KAGGLE_CONFIG_DIR'] = kaggle_config_dir
+            print(f"Using KAGGLE_CONFIG_DIR: {kaggle_config_dir}")
+        
+        # Verify kaggle.json exists in the config directory
+        config_dir = kaggle_config_dir or os.path.expanduser('~/.kaggle')
+        kaggle_json_path = os.path.join(config_dir, 'kaggle.json')
+        if not os.path.exists(kaggle_json_path):
+            raise RuntimeError(f"Could not find kaggle.json in {config_dir}. Please place it there or specify a valid kaggle_config_dir.")
         
         print(f"Downloading Kaggle dataset: {kaggle_dataset_name}")
         with tempfile.TemporaryDirectory() as tmpdir:
