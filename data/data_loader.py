@@ -180,49 +180,119 @@ def _extract_archive(archive_path: str, extract_to: str):
         raise RuntimeError(f"Unsupported archive format: {archive_path}")
 
 
-def _ensure_download_if_missing(dataset_root: str, download_url: Optional[str]):
+# def _ensure_download_if_missing(dataset_root: str, download_url: Optional[str]):
+#     """
+#     Downloads and extracts the dataset if the root directory is empty.
+#     This version handles archives with a single nested top-level directory to
+#     avoid paths like `CovidDataset/CovidDataset`.
+#     """
+#     if os.path.isdir(dataset_root) and os.listdir(dataset_root):
+#         print(f"[COVID] Dataset already exists at: {dataset_root}")
+#         return
+
+#     os.makedirs(dataset_root, exist_ok=True)
+
+#     if not download_url:
+#         print(f"[COVID] Created empty dataset root at: {dataset_root} (no download_url provided)")
+#         return
+
+#     with tempfile.TemporaryDirectory() as tmpdir:
+#         archive_path = os.path.join(tmpdir, "covid_dataset_archive.zip")
+#         extract_path = os.path.join(tmpdir, "extracted_data")
+
+#         print(f"[COVID] Downloading dataset from:\n  {download_url}")
+#         _download_file(download_url, archive_path)
+
+#         print(f"[COVID] Extracting dataset to a temporary location...")
+#         _extract_archive(archive_path, extract_path)
+
+#         # Check if the archive extracted into a single directory (e.g., 'CovidDataset')
+#         extracted_items = os.listdir(extract_path)
+#         source_dir = extract_path
+#         if len(extracted_items) == 1 and os.path.isdir(os.path.join(extract_path, extracted_items[0])):
+#             # If so, set the source for the move operation to be that inner directory
+#             print(f"[COVID] Detected nested folder '{extracted_items[0]}', adjusting path.")
+#             source_dir = os.path.join(extract_path, extracted_items[0])
+
+#         # Move the actual content into the final dataset_root
+#         print(f"[COVID] Moving files to final destination: {dataset_root}")
+#         for item_name in os.listdir(source_dir):
+#             source_item = os.path.join(source_dir, item_name)
+#             dest_item = os.path.join(dataset_root, item_name)
+#             shutil.move(source_item, dest_item)
+
+#     print(f"[COVID] Dataset successfully prepared at: {dataset_root}")
+
+def _ensure_download_if_missing(dataset_root: str, download_url: Optional[str], kaggle_dataset: bool = False, kaggle_dataset_name: Optional[str] = None):
     """
     Downloads and extracts the dataset if the root directory is empty.
-    This version handles archives with a single nested top-level directory to
-    avoid paths like `CovidDataset/CovidDataset`.
+    Handles Kaggle datasets if kaggle_dataset is True.
+    Adjusts for nested folder structures to avoid redundant paths.
     """
     if os.path.isdir(dataset_root) and os.listdir(dataset_root):
-        print(f"[COVID] Dataset already exists at: {dataset_root}")
+        print(f"Dataset already exists at: {dataset_root}")
         return
-
+    
     os.makedirs(dataset_root, exist_ok=True)
-
-    if not download_url:
-        print(f"[COVID] Created empty dataset root at: {dataset_root} (no download_url provided)")
+    
+    if not download_url and not kaggle_dataset:
+        print(f"Created empty dataset root at: {dataset_root} (no download_url provided)")
         return
+    
+    if kaggle_dataset:
+        try:
+            import kaggle
+        except ImportError:
+            raise RuntimeError("Kaggle API not installed. Install with `pip install kaggle` and configure your Kaggle API credentials.")
+        
+        if not kaggle_dataset_name:
+            raise ValueError("Kaggle dataset name must be provided for Kaggle downloads.")
+        
+        print(f"Downloading Kaggle dataset: {kaggle_dataset_name}")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Download dataset using Kaggle API
+            kaggle.api.dataset_download_files(kaggle_dataset_name, path=tmpdir, unzip=True)
+            
+            # Check for nested folder structure
+            extracted_items = os.listdir(tmpdir)
+            source_dir = tmpdir
+            if len(extracted_items) == 1 and os.path.isdir(os.path.join(tmpdir, extracted_items[0])):
+                print(f"Detected nested folder '{extracted_items[0]}', adjusting path.")
+                source_dir = os.path.join(tmpdir, extracted_items[0])
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        archive_path = os.path.join(tmpdir, "covid_dataset_archive.zip")
-        extract_path = os.path.join(tmpdir, "extracted_data")
+            # Move files to dataset_root
+            print(f"Moving files to final destination: {dataset_root}")
+            for item_name in os.listdir(source_dir):
+                source_item = os.path.join(source_dir, item_name)
+                dest_item = os.path.join(dataset_root, item_name)
+                shutil.move(source_item, dest_item)
+                
+    else:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            archive_path = os.path.join(tmpdir, "dataset_archive.zip")
+            extract_path = os.path.join(tmpdir, "extracted_data")
+            
+            print(f"Downloading dataset from: {download_url}")
+            _download_file(download_url, archive_path)
+            
+            print(f"Extracting dataset to a temporary location...")
+            _extract_archive(archive_path, extract_path)
+            
+            # Check for nested folder structure
+            extracted_items = os.listdir(extract_path)
+            source_dir = extract_path
+            if len(extracted_items) == 1 and os.path.isdir(os.path.join(extract_path, extracted_items[0])):
+                print(f"Detected nested folder '{extracted_items[0]}', adjusting path.")
+                source_dir = os.path.join(extract_path, extracted_items[0])
 
-        print(f"[COVID] Downloading dataset from:\n  {download_url}")
-        _download_file(download_url, archive_path)
-
-        print(f"[COVID] Extracting dataset to a temporary location...")
-        _extract_archive(archive_path, extract_path)
-
-        # Check if the archive extracted into a single directory (e.g., 'CovidDataset')
-        extracted_items = os.listdir(extract_path)
-        source_dir = extract_path
-        if len(extracted_items) == 1 and os.path.isdir(os.path.join(extract_path, extracted_items[0])):
-            # If so, set the source for the move operation to be that inner directory
-            print(f"[COVID] Detected nested folder '{extracted_items[0]}', adjusting path.")
-            source_dir = os.path.join(extract_path, extracted_items[0])
-
-        # Move the actual content into the final dataset_root
-        print(f"[COVID] Moving files to final destination: {dataset_root}")
-        for item_name in os.listdir(source_dir):
-            source_item = os.path.join(source_dir, item_name)
-            dest_item = os.path.join(dataset_root, item_name)
-            shutil.move(source_item, dest_item)
-
-    print(f"[COVID] Dataset successfully prepared at: {dataset_root}")
-
+            # Move files to dataset_root
+            print(f"Moving files to final destination: {dataset_root}")
+            for item_name in os.listdir(source_dir):
+                source_item = os.path.join(source_dir, item_name)
+                dest_item = os.path.join(dataset_root, item_name)
+                shutil.move(source_item, dest_item)
+    
+    print(f"Dataset successfully prepared at: {dataset_root}")
 
 def _list_images_recursive(root_dir: str,
                            exts: Iterable[str] = (".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".gif")) -> List[
@@ -323,6 +393,73 @@ def get_dataloader_covid19(
     print(f"[COVID] Test  (Covid):  {len(test_abnormal_dataset)} images")
     if len(test_abnormal_dataset) == 0:
         print("[INFO] 'test_abnormal_loader' is empty as no COVID-19 images were found.")
+    print("-" * 36)
+
+    return train_loader, test_normal_loader, test_abnormal_loader
+
+# ──────────────────────────────────────────────────────────────────────────────
+# OCT2017 loader
+# ──────────────────────────────────────────────────────────────────────────────
+
+def get_dataloader_oct2017(
+    dataset_root: str,
+    input_size: int = 256,
+    batch_size: int = 16,
+    num_workers: int = 2,
+    kaggle_dataset_name: str = "paultimothymooney/kermany2018",
+):
+    _ensure_download_if_missing(dataset_root, download_url=None, kaggle_dataset=True, kaggle_dataset_name=kaggle_dataset_name)
+
+    train_normal_dir = os.path.join(dataset_root, 'train', 'NORMAL')
+    test_normal_dir = os.path.join(dataset_root, 'test', 'NORMAL')
+    test_abnormal_dirs = [
+        os.path.join(dataset_root, 'test', 'CNV'),
+        os.path.join(dataset_root, 'test', 'DME'),
+        os.path.join(dataset_root, 'test', 'DRUSEN')
+    ]
+
+    train_imgs = _list_images_recursive(train_normal_dir)
+    test_normal_imgs = _list_images_recursive(test_normal_dir)
+    test_abnormal_imgs = []
+    for d in test_abnormal_dirs:
+        test_abnormal_imgs += _list_images_recursive(d)
+
+    if not train_imgs:
+        raise RuntimeError(f"No images found in {train_normal_dir}. Please check the dataset structure.")
+    if not test_normal_imgs:
+        raise RuntimeError(f"No images found in {test_normal_dir}. Please check the dataset structure.")
+    if not test_abnormal_imgs:
+        print(f"[WARNING] No abnormal images found in {test_abnormal_dirs}. Proceeding with empty abnormal loader.")
+
+    imagenet_mean = [0.485, 0.456, 0.406]
+    imagenet_std = [0.229, 0.224, 0.225]
+    train_tfm = transforms.Compose([
+        transforms.Resize((input_size, input_size)),
+        # transforms.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1)),
+        # transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
+    ])
+    test_tfm = transforms.Compose([
+        transforms.Resize((input_size, input_size)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
+    ])
+
+    train_dataset = _ListImageDataset(train_imgs, transform=train_tfm)
+    test_normal_dataset = _ListImageDataset(test_normal_imgs, transform=test_tfm)
+    test_abnormal_dataset = _ListImageDataset(test_abnormal_imgs, transform=test_tfm, allow_empty=True)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+    test_normal_loader = DataLoader(test_normal_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+    test_abnormal_loader = DataLoader(test_abnormal_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+
+    print("-" * 36)
+    print(f"[OCT2017] Train (Normal): {len(train_dataset)} images")
+    print(f"[OCT2017] Test  (Normal): {len(test_normal_dataset)} images")
+    print(f"[OCT2017] Test  (Abnormal): {len(test_abnormal_dataset)} images")
+    if len(test_abnormal_dataset) == 0:
+        print("[INFO] 'test_abnormal_loader' is empty as no abnormal images were found.")
     print("-" * 36)
 
     return train_loader, test_normal_loader, test_abnormal_loader
