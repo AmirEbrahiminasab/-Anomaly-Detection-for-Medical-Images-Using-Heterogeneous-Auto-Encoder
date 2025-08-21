@@ -82,6 +82,12 @@ def brain_tumor():
         input_size=INPUT_SIZE
     )
 
+    # Visualize anomaly maps
+    VIS_SAVE_DIR = 'anomaly-maps-res/brain_tumor'
+    os.makedirs(VIS_SAVE_DIR, exist_ok=True)
+    visualize_anomaly_maps(best_model, test_normal_loader, device, num_samples=5, dataset_name='BrainTumor', is_abnormal=False, save_dir=VIS_SAVE_DIR)
+    visualize_anomaly_maps(best_model, test_abnormal_loader, device, num_samples=5, dataset_name='BrainTumor', is_abnormal=True, save_dir=VIS_SAVE_DIR)
+
 
 def covid19():
     DATA_DIR = "/home/appliedailab/Desktop/Deep/CovidDataset"
@@ -279,8 +285,8 @@ def tunning():
     
 if __name__ == "__main__":
     # chest_xray()
-    # brain_tumor()
-    covid19()
+    brain_tumor()
+    # covid19()
     # oct2017()
     # tunning()
 
