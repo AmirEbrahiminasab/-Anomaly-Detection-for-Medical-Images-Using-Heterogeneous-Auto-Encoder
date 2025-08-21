@@ -39,7 +39,7 @@ def chest_xray():
     SAVE_PATH = os.path.join(SAVE_DIR, 'best_model_weights_chest.pth')
     os.makedirs(SAVE_DIR, exist_ok=True)
     torch.save(best_model.state_dict(), SAVE_PATH)
-    print(f"✅ Best model's weights saved to: {SAVE_PATH}")
+    print(f"Best model's weights saved to: {SAVE_PATH}")
 
     evaluate_anomaly_detector(
         model=best_model,
@@ -72,7 +72,7 @@ def brain_tumor():
     SAVE_PATH = os.path.join(SAVE_DIR, 'best_model_weights_brain.pth')
     os.makedirs(SAVE_DIR, exist_ok=True)
     torch.save(best_model.state_dict(), SAVE_PATH)
-    print(f"✅ Best model's weights saved to: {SAVE_PATH}")
+    print(f"Best model's weights saved to: {SAVE_PATH}")
 
     evaluate_anomaly_detector(
         model=best_model,
@@ -115,39 +115,46 @@ def covid19():
         device=device,
         input_size=INPUT_SIZE
     )
+    
+    # Visualize anomaly maps
+    VIS_SAVE_DIR = '-Anomaly-Detection-for-Medical-Images-Using-Heterogeneous-Auto-Encoder/utils/visualizations/covid19'
+    os.makedirs(VIS_SAVE_DIR, exist_ok=True)
+    visualize_anomaly_maps(best_model, test_normal_loader, num_samples=5, dataset_name='COVID-19', is_abnormal=False, save_dir=VIS_SAVE_DIR)
+    visualize_anomaly_maps(best_model, test_abnormal_loader, num_samples=5, dataset_name='COVID-19', is_abnormal=True, save_dir=VIS_SAVE_DIR)
 
-# def oct2017():
-#     DATA_DIR = "/home/appliedailab/Desktop/Deep/OCT2017"
 
-#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#     print(f"Using device: {device}")
-#     print(torch.__version__)
+def oct2017():
+    DATA_DIR = "/home/appliedailab/Desktop/Deep/OCT2017"
 
-#     train_loader, test_normal_loader, test_abnormal_loader = get_dataloader_oct2017(
-#         dataset_root=DATA_DIR,
-#         input_size=INPUT_SIZE,
-#         batch_size=BATCH_SIZE,
-#         kaggle_dataset_name="paultimothymooney/kermany2018",  # used only if folder missing
-#     )
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+    print(torch.__version__)
 
-#     best_model = train(
-#         train_loader, test_normal_loader, test_abnormal_loader,
-#         EPOCHS, device, ALPHA_LOSS, LEARNING_RATE, INPUT_SIZE, patience=500
-#     )
+    train_loader, test_normal_loader, test_abnormal_loader = get_dataloader_oct2017(
+        dataset_root=DATA_DIR,
+        input_size=INPUT_SIZE,
+        batch_size=BATCH_SIZE,
+        kaggle_dataset_name="paultimothymooney/kermany2018",  # used only if folder missing
+    )
 
-#     SAVE_DIR = 'models/saved_models'
-#     os.makedirs(SAVE_DIR, exist_ok=True)
-#     SAVE_PATH = os.path.join(SAVE_DIR, 'best_model_weights_oct2017.pth')
-#     torch.save(best_model.state_dict(), SAVE_PATH)
-#     print(f"Best model's weights saved to: {SAVE_PATH}")
+    best_model = train(
+        train_loader, test_normal_loader, test_abnormal_loader,
+        EPOCHS, device, ALPHA_LOSS, LEARNING_RATE, INPUT_SIZE, patience=500
+    )
 
-#     evaluate_anomaly_detector(
-#         model=best_model,
-#         normal_loader=test_normal_loader,
-#         abnormal_loader=test_abnormal_loader,
-#         device=device,
-#         input_size=INPUT_SIZE
-#     )
+    SAVE_DIR = 'models/saved_models'
+    os.makedirs(SAVE_DIR, exist_ok=True)
+    SAVE_PATH = os.path.join(SAVE_DIR, 'best_model_weights_oct2017.pth')
+    torch.save(best_model.state_dict(), SAVE_PATH)
+    print(f"Best model's weights saved to: {SAVE_PATH}")
+
+    evaluate_anomaly_detector(
+        model=best_model,
+        normal_loader=test_normal_loader,
+        abnormal_loader=test_abnormal_loader,
+        device=device,
+        input_size=INPUT_SIZE
+    )
 
 
 def hyperparameter_tuning_random_search(num_trials, train_loader, test_normal_loader, test_abnormal_loader, device, input_size, dataset_name):
@@ -191,7 +198,7 @@ def hyperparameter_tuning_random_search(num_trials, train_loader, test_normal_lo
 
         df = pd.DataFrame(results)
         df.to_csv('hyperparameter_tuning_results.csv', index=False)
-        print(f"✅ Results for trial {i+1} saved to hyperparameter_tuning_results_{dataset_name}.csv")
+        print(f"Results for trial {i+1} saved to hyperparameter_tuning_results_{dataset_name}.csv")
 
     print("\n--- Hyperparameter Tuning Complete ---")
     print(pd.read_csv('hyperparameter_tuning_results.csv'))
@@ -273,8 +280,8 @@ def tunning():
 if __name__ == "__main__":
     # chest_xray()
     # brain_tumor()
-    # covid19()
+    covid19()
     # oct2017()
-    tunning()
+    # tunning()
 
  
