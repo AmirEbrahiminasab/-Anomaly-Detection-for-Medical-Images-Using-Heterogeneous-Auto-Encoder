@@ -10,6 +10,7 @@ import models
 from data.data_loader import get_dataloader_brain_tumor, get_dataloader_chest_xray, \
 								get_dataloader_covid19, get_dataloader_oct2017
 from utils.metrics import calculate_specificity, evaluate_anomaly_detector
+from utils.visualization import visualize_anomaly_maps
 
 INPUT_SIZE = 256
 BATCH_SIZE = 200
@@ -81,7 +82,6 @@ def brain_tumor():
 
 
 def covid19():
-    # DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "CovidDataset"))
     DATA_DIR = "/home/appliedailab/Desktop/Deep/CovidDataset"
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -114,6 +114,12 @@ def covid19():
         input_size=INPUT_SIZE
     )
 
+    # Visualize anomaly maps
+    VIS_SAVE_DIR = 'visualizations/covid19'
+    os.makedirs(VIS_SAVE_DIR, exist_ok=True)
+    visualize_anomaly_maps(best_model, test_normal_loader, num_samples=5, dataset_name='COVID-19', is_abnormal=False, save_dir=VIS_SAVE_DIR)
+    visualize_anomaly_maps(best_model, test_abnormal_loader, num_samples=5, dataset_name='COVID-19', is_abnormal=True, save_dir=VIS_SAVE_DIR)
+    
 def oct2017():
     DATA_DIR = "/home/appliedailab/Desktop/Deep/OCT2017"
 
