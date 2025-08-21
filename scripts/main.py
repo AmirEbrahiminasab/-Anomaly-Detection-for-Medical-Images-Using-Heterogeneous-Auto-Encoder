@@ -117,10 +117,10 @@ def covid19():
     )
     
     # Visualize anomaly maps
-    VIS_SAVE_DIR = '-Anomaly-Detection-for-Medical-Images-Using-Heterogeneous-Auto-Encoder/utils/visualizations/covid19'
+    VIS_SAVE_DIR = 'anomaly-maps-res/covid19'
     os.makedirs(VIS_SAVE_DIR, exist_ok=True)
-    visualize_anomaly_maps(best_model, test_normal_loader, num_samples=5, dataset_name='COVID-19', is_abnormal=False, save_dir=VIS_SAVE_DIR)
-    visualize_anomaly_maps(best_model, test_abnormal_loader, num_samples=5, dataset_name='COVID-19', is_abnormal=True, save_dir=VIS_SAVE_DIR)
+    visualize_anomaly_maps(best_model, test_normal_loader, device, num_samples=5, dataset_name='COVID-19', is_abnormal=False, save_dir=VIS_SAVE_DIR)
+    visualize_anomaly_maps(best_model, test_abnormal_loader, device, num_samples=5, dataset_name='COVID-19', is_abnormal=True, save_dir=VIS_SAVE_DIR)
 
 
 def oct2017():

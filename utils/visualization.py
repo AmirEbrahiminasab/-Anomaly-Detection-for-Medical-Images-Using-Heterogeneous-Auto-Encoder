@@ -70,7 +70,7 @@ def draw_bounding_box(anomaly_map: np.ndarray, threshold: float = 0.5) -> tuple:
         return (x, y, w, h)
     return None
     
-def visualize_anomaly_maps(model, dataloader, num_samples=5, dataset_name='', is_abnormal=True, save_dir=None):
+def visualize_anomaly_maps(model, dataloader, device, num_samples=5, dataset_name='', is_abnormal=True, save_dir=None):
     """
     Visualize anomaly maps for a given number of samples from the dataloader.
     
@@ -89,7 +89,7 @@ def visualize_anomaly_maps(model, dataloader, num_samples=5, dataset_name='', is
             if samples_processed >= num_samples:
                 return
             original_image = denorm_transform(img_tensor.clone())
-            anomaly_map = get_anomaly_map_and_features(model, img_tensor)
+            anomaly_map = get_anomaly_map_and_features(model, device, img_tensor)
             title = f"{dataset_name} {'Abnormal' if is_abnormal else 'Normal'} Sample {samples_processed + 1}"
             visualize_prediction(original_image, anomaly_map, title, save_path=os.path.join(save_dir, f"{title.replace(' ', '_')}.png") if save_dir else None)
             samples_processed += 1
