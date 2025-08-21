@@ -157,7 +157,7 @@ def hyperparameter_tuning_random_search(num_trials, train_loader, test_normal_lo
     alpha_loss_space = [0.5, 0.6, 0.7, 0.8]
     batch_size_space = [32, 64, 128, 200]
     
-    tuning_epochs = 5
+    tuning_epochs = 10
 
     for i in range(num_trials):
         learning_rate = random.choice(learning_rate_space)
