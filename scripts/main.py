@@ -6,6 +6,7 @@ import random
 import pandas as pd
 from torch.utils.data import DataLoader
 from typing import Tuple
+from models import model as modell
 
 np.random.seed(42)
 # random.seed(42)
@@ -58,6 +59,16 @@ def chest_xray():
     )
 
 
+    best_model = modell.HeteroAE(input_size=INPUT_SIZE).to(device)
+    best_model.load_state_dict(torch.load(SAVE_DIR + '/best_model_weights_chest.pth'))
+    # Visualize anomaly maps
+    VIS_SAVE_DIR = 'anomaly-maps-res/chest_xray'
+    os.makedirs(VIS_SAVE_DIR, exist_ok=True)
+    visualize_anomaly_maps(best_model, test_normal_loader, device, num_samples=5, dataset_name='ChestXray', is_abnormal=False, save_dir=VIS_SAVE_DIR)
+    visualize_anomaly_maps(best_model, test_abnormal_loader, device, num_samples=5, dataset_name='ChestXray', is_abnormal=True, save_dir=VIS_SAVE_DIR)
+
+
+
 def brain_tumor():
     DATA_DIR = "/home/appliedailab/Desktop/Deep/brain_tumor"
 
@@ -94,11 +105,14 @@ def brain_tumor():
         input_size=INPUT_SIZE
     )
 
+    # best_model = modell.HeteroAE(input_size=INPUT_SIZE).to(device)
+    # best_model.load_state_dict(torch.load(SAVE_DIR + '/best_model_weights_brain.pth'))
+
     # Visualize anomaly maps
     VIS_SAVE_DIR = 'anomaly-maps-res/brain_tumor'
     os.makedirs(VIS_SAVE_DIR, exist_ok=True)
-    visualize_anomaly_maps(best_model, test_normal_loader, device, num_samples=5, dataset_name='BrainTumor', is_abnormal=False, save_dir=VIS_SAVE_DIR)
-    visualize_anomaly_maps(best_model, test_abnormal_loader, device, num_samples=5, dataset_name='BrainTumor', is_abnormal=True, save_dir=VIS_SAVE_DIR)
+    # visualize_anomaly_maps(best_model, test_normal_loader, device, num_samples=5, dataset_name='BrainTumor', is_abnormal=False, save_dir=VIS_SAVE_DIR)
+    visualize_anomaly_maps(best_model, test_abnormal_loader, device, num_samples=10, dataset_name='BrainTumor', is_abnormal=True, save_dir=VIS_SAVE_DIR)
 
 
 def covid19():
@@ -136,46 +150,15 @@ def covid19():
         device=device,
         input_size=INPUT_SIZE
     )
+
+    # best_model = modell.HeteroAE(input_size=INPUT_SIZE).to(device)
+    # best_model.load_state_dict(torch.load(SAVE_DIR + '/best_model_weights_covid19.pth'))
     
     # Visualize anomaly maps
     VIS_SAVE_DIR = 'anomaly-maps-res/covid19'
     os.makedirs(VIS_SAVE_DIR, exist_ok=True)
-    visualize_anomaly_maps(best_model, test_normal_loader, device, num_samples=5, dataset_name='COVID-19', is_abnormal=False, save_dir=VIS_SAVE_DIR)
-    visualize_anomaly_maps(best_model, test_abnormal_loader, device, num_samples=5, dataset_name='COVID-19', is_abnormal=True, save_dir=VIS_SAVE_DIR)
-
-
-def oct2017():
-    DATA_DIR = "/home/appliedailab/Desktop/Deep/OCT2017"
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-    print(torch.__version__)
-
-    train_loader, test_normal_loader, test_abnormal_loader = get_dataloader_oct2017(
-        dataset_root=DATA_DIR,
-        input_size=INPUT_SIZE,
-        batch_size=BATCH_SIZE,
-        kaggle_dataset_name="paultimothymooney/kermany2018",  # used only if folder missing
-    )
-
-    best_model = train(
-        train_loader, test_normal_loader, test_abnormal_loader,
-        EPOCHS, device, ALPHA_LOSS, LEARNING_RATE, INPUT_SIZE, patience=500
-    )
-
-    SAVE_DIR = 'models/saved_models'
-    os.makedirs(SAVE_DIR, exist_ok=True)
-    SAVE_PATH = os.path.join(SAVE_DIR, 'best_model_weights_oct2017.pth')
-    torch.save(best_model.state_dict(), SAVE_PATH)
-    print(f"Best model's weights saved to: {SAVE_PATH}")
-
-    evaluate_anomaly_detector(
-        model=best_model,
-        normal_loader=test_normal_loader,
-        abnormal_loader=test_abnormal_loader,
-        device=device,
-        input_size=INPUT_SIZE
-    )
+    # visualize_anomaly_maps(best_model, test_normal_loader, device, num_samples=5, dataset_name='COVID-19', is_abnormal=False, save_dir=VIS_SAVE_DIR)
+    visualize_anomaly_maps(best_model, test_abnormal_loader, device, num_samples=10, dataset_name='COVID-19', is_abnormal=True, save_dir=VIS_SAVE_DIR)
 
 
 def hyperparameter_tuning_random_search(num_trials, device, input_size, dataset_name):
@@ -296,7 +279,6 @@ if __name__ == "__main__":
     # chest_xray()
     # brain_tumor()
     covid19()
-    # oct2017()
     # tunning()
 
  
